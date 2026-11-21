@@ -25,7 +25,6 @@ onUnmounted(() => {
 
 <template>
   <div>
-    <h1 style="text-align: center; margin-top: 1rem;">Boss Kill Tracker</h1>
     <Auth v-if="!session" />
     <BossTracker v-else />
   </div>

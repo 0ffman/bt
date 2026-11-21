@@ -41,16 +41,24 @@ export const BOSSES = [
   { id: 'sobekk', name: 'Krokian Padisha Sobekk', level: 74, tier: 'high' },
 ]
 
-// Окно респавна в часах: [min, max]
+// Окно респавна в часах: фикс + случайная добавка
 export const RESPAWN_WINDOW = {
-  low: [10, 14],
-  high: [12, 16],
+  low:  { fixed: 10, randomMax: 4 },
+  high: { fixed: 12, randomMax: 4 },
 }
 
-// Случайное время респавна в окне (в мс от killed_at)
+// Фикс в мс
+export function fixedRespawnMs(tier) {
+  return (RESPAWN_WINDOW[tier]?.fixed ?? 10) * 3600 * 1000
+}
+
+// Случайная добавка в мс
+export function rollRandomMs(tier) {
+  const maxH = RESPAWN_WINDOW[tier]?.randomMax ?? 4
+  return Math.random() * maxH * 3600 * 1000
+}
+
+// Итоговое время респавна от killed_at
 export function rollRespawnMs(tier) {
-  const [minH, maxH] = RESPAWN_WINDOW[tier] || RESPAWN_WINDOW.low
-  const minMs = minH * 3600 * 1000
-  const maxMs = maxH * 3600 * 1000
-  return minMs + Math.random() * (maxMs - minMs)
+  return fixedRespawnMs(tier) + rollRandomMs(tier)
 }
