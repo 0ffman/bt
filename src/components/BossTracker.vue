@@ -1,19 +1,17 @@
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { supabase } from '../supabase'
+import { BOSSES, RESPAWN_HOURS } from '../bosses'
 
-const bossName = ref('')
 const kills = ref([])
-const loading = ref(false)
+const loadingId = ref(null)
 const user = ref(null)
 
-// Получаем текущего пользователя
 async function getUser() {
   const { data } = await supabase.auth.getUser()
   user.value = data.user
 }
 
-// Загрузка всех записей
 async function fetchKills() {
   const { data, error } = await supabase
     .from('boss_kills')
@@ -22,30 +20,54 @@ async function fetchKills() {
   if (!error) kills.value = data
 }
 
-// Добавление записи
-async function addKill() {
-  if (!bossName.value.trim() || !user.value) return
-  loading.value = true
-  const { error } = await supabase.from('boss_kills').insert({
-    boss_name: bossName.value.trim(),
-    user_id: user.value.id,
-    killed_at: new Date().toISOString(), // всегда UTC
-  })
-  loading.value = false
-  if (error) alert(error.message)
-  else {
-    bossName.value = ''
-    await fetchKills()
-  }
+// Последнее убийство для каждого босса
+function lastKill(bossId) {
+  return kills.value.find(k => k.boss_name === bossId) || null
 }
 
-// Форматирование времени в часовом поясе зрителя
-function formatTime(utcString) {
+// Время следующего респавна (UTC ISO) или null
+function respawnAt(bossId) {
+  const last = lastKill(bossId)
+  if (!last) return null
+  return new Date(new Date(last.killed_at).getTime() + RESPAWN_HOURS * 3600 * 1000)
+}
+
+// Живой ли босс (нет убийства или респавн уже прошёл)
+function isAlive(bossId) {
+  const r = respawnAt(bossId)
+  return !r || r.getTime() <= Date.now()
+}
+
+// Сортировка: живые сверху, убитые ниже; внутри группы — по имени
+const sortedBosses = computed(() => {
+  return [...BOSSES].sort((a, b) => {
+    const aliveA = isAlive(a.id) ? 0 : 1
+    const aliveB = isAlive(b.id) ? 0 : 1
+    if (aliveA !== aliveB) return aliveA - aliveB
+    return a.name.localeCompare(b.name)
+  })
+})
+
+async function addKill(bossId) {
+  if (!user.value) return
+  loadingId.value = bossId
+  const { error } = await supabase.from('boss_kills').insert({
+    boss_name: bossId,
+    user_id: user.value.id,
+    killed_at: new Date().toISOString(),
+  })
+  loadingId.value = null
+  if (error) alert(error.message)
+  else await fetchKills()
+}
+
+function formatTime(date) {
+  const d = date instanceof Date ? date : new Date(date)
   return new Intl.DateTimeFormat('ru-RU', {
     timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
     dateStyle: 'short',
     timeStyle: 'medium',
-  }).format(new Date(utcString))
+  }).format(d)
 }
 
 async function signOut() {
@@ -60,7 +82,7 @@ onMounted(async () => {
 </script>
 
 <template>
-  <div style="padding: 1rem; max-width: 600px; margin: auto;">
+  <div style="padding: 1rem; max-width: 700px; margin: auto;">
     <div v-if="!user">
       <p>Пожалуйста, войди через форму выше.</p>
     </div>
@@ -71,30 +93,43 @@ onMounted(async () => {
         <button @click="signOut">Выйти</button>
       </div>
 
-      <div style="display: flex; gap: 0.5rem; margin-bottom: 1.5rem;">
-        <input
-          v-model="bossName"
-          placeholder="Имя босса"
-          style="flex: 1; padding: 0.5rem;"
-          @keyup.enter="addKill"
-        />
-        <button @click="addKill" :disabled="loading">
-          {{ loading ? '...' : 'Убил!' }}
-        </button>
-      </div>
-
-      <h3>История убийств</h3>
-      <ul v-if="kills.length" style="list-style: none; padding: 0;">
-        <li
-          v-for="kill in kills"
-          :key="kill.id"
-          style="padding: 0.5rem; border-bottom: 1px solid #eee; display: flex; justify-content: space-between;"
+      <div style="display: flex; flex-direction: column; gap: 0.75rem;">
+        <div
+          v-for="boss in sortedBosses"
+          :key="boss.id"
+          :style="{
+            padding: '0.75rem 1rem',
+            borderRadius: '8px',
+            border: '1px solid ' + (isAlive(boss.id) ? '#2e7d32' : '#c62828'),
+            background: isAlive(boss.id) ? '#e8f5e9' : '#ffebee',
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            gap: '1rem',
+          }"
         >
-          <strong>{{ kill.boss_name }}</strong>
-          <span>{{ formatTime(kill.killed_at) }}</span>
-        </li>
-      </ul>
-      <p v-else>Пока пусто. Убей первого босса!</p>
+          <div>
+            <strong>{{ boss.name }}</strong>
+            <div style="font-size: 0.85rem; color: #555; margin-top: 0.25rem;">
+              <template v-if="lastKill(boss.id)">
+                Убит: {{ formatTime(lastKill(boss.id).killed_at) }}<br />
+                Респавн: {{ formatTime(respawnAt(boss.id)) }}
+              </template>
+              <template v-else>
+                Ещё не убит
+              </template>
+            </div>
+          </div>
+
+          <button
+            @click="addKill(boss.id)"
+            :disabled="loadingId === boss.id"
+            style="padding: 0.5rem 1rem; white-space: nowrap;"
+          >
+            {{ loadingId === boss.id ? '...' : 'Убил!' }}
+          </button>
+        </div>
+      </div>
     </div>
   </div>
 </template>
