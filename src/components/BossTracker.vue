@@ -2,8 +2,8 @@
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { supabase } from '../supabase'
 import {
-  BOSSES, rollRespawnMs, estimateMinRespawnMs,
-  RESPAWN_WINDOW, fixedRespawnMs, ESTIMATE_MIN_EXTRA_HOURS,
+  BOSSES, rollRespawnMs, fixedRespawnMs,
+  RESPAWN_WINDOW, ESTIMATE_MIN_EXTRA_HOURS,
 } from '../bosses'
 
 const kills = ref([])
@@ -13,13 +13,12 @@ const user = ref(null)
 const username = ref('')
 const now = ref(Date.now())
 let ticker = null
-
 const manualEdit = ref(null)
 
 async function getUser() {
   const { data } = await supabase.auth.getUser()
   user.value = data.user
-  username.value = data.user?.user_metadata?.username || data.user?.email || '—'
+  username.value = data.user?.user_metadata?.username || '—'
 }
 
 async function fetchKills() {
@@ -70,21 +69,23 @@ function lastKill(bossId) {
 function statusOf(boss) {
   const last = lastKill(boss.id)
   if (!last) return 'alive'
-  const respawn = last.respawn_at
-    ? new Date(last.respawn_at).getTime()
-    : new Date(last.killed_at).getTime() + fixedRespawnMs(boss.tier)
-  const isMin = !!last.estimate_min
-  if (Date.now() < respawn) return isMin ? 'estimate_min' : 'respawning'
-  return 'dead'
-}
 
-function countdownMs(boss) {
-  const last = lastKill(boss.id)
-  if (!last) return 0
-  const respawn = last.respawn_at
+  const killedAt = new Date(last.killed_at).getTime()
+  const fixedEnd = killedAt + fixedRespawnMs(boss.tier)
+  const respawnEnd = last.respawn_at
     ? new Date(last.respawn_at).getTime()
-    : new Date(last.killed_at).getTime() + fixedRespawnMs(boss.tier)
-  return Math.max(0, respawn - now.value)
+    : fixedEnd
+
+  const nowMs = now.value
+
+  if (last.estimate_min) {
+    if (nowMs < respawnEnd) return 'estimate_min'
+    return 'alive'
+  }
+
+  if (nowMs < fixedEnd) return 'respawning'
+  if (nowMs < respawnEnd) return 'respawn_window'
+  return 'alive'
 }
 
 function fixedLeft(boss) {
@@ -110,7 +111,7 @@ function fmtMs(ms) {
   return `${h}ч ${String(m).padStart(2, '0')}м ${String(s).padStart(2, '0')}с`
 }
 
-const STATUS_ORDER = { alive: 0, respawning: 1, estimate_min: 2, dead: 3 }
+const STATUS_ORDER = { respawning: 0, respawn_window: 1, estimate_min: 2, alive: 3 }
 
 function sortBosses(list) {
   return [...list].sort((a, b) => {
@@ -132,12 +133,29 @@ async function addKill(boss, estimateMin = false) {
   if (!user.value) return
   loadingId.value = boss.id
   const nowIso = new Date().toISOString()
-  const respawnMs = estimateMin ? estimateMinRespawnMs(boss.tier) : rollRespawnMs(boss.tier)
-  const respawnIso = new Date(Date.now() + respawnMs).toISOString()
+  let killTime, respawnMs
+
+  if (estimateMin) {
+    // Время убийства = начало окна респавна (момент, когда босс перешёл из красного в оранжевый)
+    const last = lastKill(boss.id)
+    if (last) {
+      const fixedEnd = new Date(last.killed_at).getTime() + fixedRespawnMs(boss.tier)
+      killTime = new Date(fixedEnd).toISOString()
+    } else {
+      killTime = nowIso
+    }
+    respawnMs = fixedRespawnMs(boss.tier) + ESTIMATE_MIN_EXTRA_HOURS * 3600 * 1000
+  } else {
+    killTime = nowIso
+    respawnMs = rollRespawnMs(boss.tier)
+  }
+
+  const respawnIso = new Date(new Date(killTime).getTime() + respawnMs).toISOString()
+
   const { error } = await supabase.from('boss_kills').insert({
     boss_name: boss.id,
     user_id: user.value.id,
-    killed_at: nowIso,
+    killed_at: killTime,
     respawn_at: respawnIso,
     estimate_min: estimateMin,
   })
@@ -190,8 +208,12 @@ async function clearKill(boss) {
     .delete()
     .eq('id', last.id)
   loadingId.value = null
-  if (error) alert(error.message)
-  else await fetchKills()
+  if (error) {
+    alert(error.message)
+  } else {
+    await fetchKills()
+    now.value = Date.now()
+  }
 }
 
 function formatTime(date) {
@@ -277,28 +299,38 @@ onUnmounted(() => {
                 </div>
 
                 <div v-else-if="lastKill(boss.id)" class="meta">
-                  <span class="meta-item">Убит: {{ formatTime(lastKill(boss.id).killed_at) }}</span>
-
                   <template v-if="statusOf(boss) === 'respawning'">
-                    <span v-if="fixedLeft(boss) > 0" class="meta-item respawn">
-                      Респавн: {{ RESPAWN_WINDOW[boss.tier].fixed }}ч
-                      <span class="dim">(осталось {{ fmtMs(countdownMs(boss)) }})</span>
+                    <span class="meta-item respawn">
+                      Убит: {{ formatTime(lastKill(boss.id).killed_at) }}
                     </span>
-                    <span v-else class="meta-item respawn">
-                      Респавн: {{ RESPAWN_WINDOW[boss.tier].fixed }}ч
-                      <span class="dim">(+{{ fmtMs(randomLeft(boss)) }})</span>
+                    <span class="meta-item respawn">
+                      Фикс: {{ RESPAWN_WINDOW[boss.tier].fixed }}ч
+                      <span class="dim">(осталось {{ fmtMs(fixedLeft(boss)) }})</span>
+                    </span>
+                  </template>
+
+                  <template v-else-if="statusOf(boss) === 'respawn_window'">
+                    <span class="meta-item respawn-window">
+                      Убит: {{ formatTime(lastKill(boss.id).killed_at) }}
+                    </span>
+                    <span class="meta-item respawn-window">
+                      Окно респавна: {{ RESPAWN_WINDOW[boss.tier].randomMax }}ч
+                      <span class="dim">(осталось {{ fmtMs(randomLeft(boss)) }})</span>
                     </span>
                   </template>
 
                   <template v-else-if="statusOf(boss) === 'estimate_min'">
                     <span class="meta-item estimate-min">
-                      По минималке: {{ RESPAWN_WINDOW[boss.tier].fixed + ESTIMATE_MIN_EXTRA_HOURS }}ч
-                      <span class="dim">(осталось {{ fmtMs(countdownMs(boss)) }})</span>
+                      Убит по мин.: {{ formatTime(lastKill(boss.id).killed_at) }}
+                    </span>
+                    <span class="meta-item estimate-min">
+                      Респавн: {{ RESPAWN_WINDOW[boss.tier].fixed + ESTIMATE_MIN_EXTRA_HOURS }}ч
+                      <span class="dim">(осталось {{ fmtMs(fixedLeft(boss)) }})</span>
                     </span>
                   </template>
 
-                  <span v-else-if="statusOf(boss) === 'dead'" class="meta-item respawn-dead">
-                    Респавн: <b>пора проверять</b>
+                  <span v-else-if="statusOf(boss) === 'alive'" class="meta-item alive">
+                    Реснулся в {{ formatTime(lastKill(boss.id).respawn_at) }}
                   </span>
                 </div>
               </div>
@@ -307,7 +339,7 @@ onUnmounted(() => {
                 <button class="kill-btn" @click="addKill(boss, false)" :disabled="loadingId === boss.id">
                   {{ loadingId === boss.id ? '…' : 'Убил' }}
                 </button>
-                <button class="kill-btn min-btn" @click="addKill(boss, true)" :disabled="loadingId === boss.id" title="По минималке (фикс + 8ч)">
+                <button class="kill-btn min-btn" @click="addKill(boss, true)" :disabled="loadingId === boss.id" title="Время убийства = начало окна респавна">
                   По мин.
                 </button>
                 <button class="kill-btn ghost-btn" @click="openManual(boss)" :disabled="loadingId === boss.id" title="Ввести время вручную">
@@ -420,16 +452,17 @@ onUnmounted(() => {
   outline-offset: 1px;
 }
 
-.card.status-alive        { background: #e6f7ec; border-color: #a8dcb8; }
-.card.status-respawning   { background: #ffeddb; border-color: #f0bf85; }
-.card.status-estimate_min { background: #fff8cc; border-color: #e6d47a; }
-.card.status-dead         { background: #fde8e8; border-color: #f0b0b0; }
+/* Цвета статусов */
+.card.status-respawning     { background: #fde8e8; border-color: #f0b0b0; } /* красный */
+.card.status-respawn_window { background: #ffeddb; border-color: #f0bf85; } /* оранжевый */
+.card.status-estimate_min   { background: #fff8cc; border-color: #e6d47a; } /* жёлтый */
+.card.status-alive          { background: #e6f7ec; border-color: #a8dcb8; } /* зелёный */
 
 .dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
-.dot-alive        { background: #34c26a; }
-.dot-respawning   { background: #e08a20; }
-.dot-estimate_min { background: #d4b820; }
-.dot-dead         { background: #e04a4a; }
+.dot-respawning     { background: #e04a4a; } /* красный */
+.dot-respawn_window { background: #e08a20; } /* оранжевый */
+.dot-estimate_min   { background: #d4b820; } /* жёлтый */
+.dot-alive          { background: #34c26a; } /* зелёный */
 
 .card-main { flex: 1; min-width: 0; }
 
@@ -463,9 +496,10 @@ onUnmounted(() => {
   gap: 0.5rem;
 }
 .meta-item { color: #5a6068; white-space: nowrap; }
-.meta-item.respawn { color: #a05c00; font-weight: 500; }
+.meta-item.respawn { color: #b03030; font-weight: 500; }
+.meta-item.respawn-window { color: #a05c00; font-weight: 500; }
 .meta-item.estimate-min { color: #8a7a00; font-weight: 500; }
-.meta-item.respawn-dead { color: #b03030; font-weight: 500; }
+.meta-item.alive { color: #1a7a3a; font-weight: 500; }
 .dim { color: #8a9099; }
 
 .manual-form {
