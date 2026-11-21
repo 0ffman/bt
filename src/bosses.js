@@ -47,18 +47,23 @@ export const RESPAWN_WINDOW = {
   high: { fixed: 12, randomMax: 4 },
 }
 
-// Фикс в мс
+// «По минималке»: фикс + 8ч (разброс 4+4)
+export const ESTIMATE_MIN_EXTRA_HOURS = 8
+
 export function fixedRespawnMs(tier) {
   return (RESPAWN_WINDOW[tier]?.fixed ?? 10) * 3600 * 1000
 }
 
-// Случайная добавка в мс
 export function rollRandomMs(tier) {
   const maxH = RESPAWN_WINDOW[tier]?.randomMax ?? 4
   return Math.random() * maxH * 3600 * 1000
 }
 
-// Итоговое время респавна от killed_at
 export function rollRespawnMs(tier) {
   return fixedRespawnMs(tier) + rollRandomMs(tier)
+}
+
+// «По минималке»: фикс + 8ч, без рандома
+export function estimateMinRespawnMs(tier) {
+  return fixedRespawnMs(tier) + ESTIMATE_MIN_EXTRA_HOURS * 3600 * 1000
 }

@@ -1,13 +1,18 @@
 <script setup>
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { supabase } from '../supabase'
-import { BOSSES, rollRespawnMs, RESPAWN_WINDOW, fixedRespawnMs } from '../bosses'
+import {
+  BOSSES, rollRespawnMs, estimateMinRespawnMs,
+  RESPAWN_WINDOW, fixedRespawnMs, ESTIMATE_MIN_EXTRA_HOURS,
+} from '../bosses'
 
 const kills = ref([])
 const loadingId = ref(null)
 const user = ref(null)
 const now = ref(Date.now())
 let ticker = null
+
+const manualEdit = ref(null)
 
 async function getUser() {
   const { data } = await supabase.auth.getUser()
@@ -32,7 +37,8 @@ function statusOf(boss) {
   const respawn = last.respawn_at
     ? new Date(last.respawn_at).getTime()
     : new Date(last.killed_at).getTime() + fixedRespawnMs(boss.tier)
-  if (Date.now() < respawn) return 'respawning'
+  const isMin = !!last.estimate_min
+  if (Date.now() < respawn) return isMin ? 'estimate_min' : 'respawning'
   return 'dead'
 }
 
@@ -68,7 +74,7 @@ function fmtMs(ms) {
   return `${h}ч ${String(m).padStart(2, '0')}м ${String(s).padStart(2, '0')}с`
 }
 
-const STATUS_ORDER = { alive: 0, respawning: 1, dead: 2 }
+const STATUS_ORDER = { alive: 0, respawning: 1, estimate_min: 2, dead: 3 }
 
 function sortBosses(list) {
   return [...list].sort((a, b) => {
@@ -86,17 +92,67 @@ function aliveCount(list) {
   return list.filter(b => statusOf(b) === 'alive').length
 }
 
-async function addKill(boss) {
+async function addKill(boss, estimateMin = false) {
   if (!user.value) return
   loadingId.value = boss.id
   const nowIso = new Date().toISOString()
-  const respawnIso = new Date(Date.now() + rollRespawnMs(boss.tier)).toISOString()
+  const respawnMs = estimateMin ? estimateMinRespawnMs(boss.tier) : rollRespawnMs(boss.tier)
+  const respawnIso = new Date(Date.now() + respawnMs).toISOString()
   const { error } = await supabase.from('boss_kills').insert({
     boss_name: boss.id,
     user_id: user.value.id,
     killed_at: nowIso,
     respawn_at: respawnIso,
+    estimate_min: estimateMin,
   })
+  loadingId.value = null
+  if (error) alert(error.message)
+  else await fetchKills()
+}
+
+function openManual(boss) {
+  const d = new Date()
+  const pad = n => String(n).padStart(2, '0')
+  const local = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`
+  manualEdit.value = { bossId: boss.id, tier: boss.tier, value: local }
+}
+
+function cancelManual() {
+  manualEdit.value = null
+}
+
+async function saveManual() {
+  if (!manualEdit.value || !user.value) return
+  const { bossId, tier, value } = manualEdit.value
+  const killed = new Date(value)
+  if (isNaN(killed.getTime())) {
+    alert('Некорректная дата/время')
+    return
+  }
+  loadingId.value = bossId
+  const respawnIso = new Date(killed.getTime() + rollRespawnMs(tier)).toISOString()
+  const { error } = await supabase.from('boss_kills').insert({
+    boss_name: bossId,
+    user_id: user.value.id,
+    killed_at: killed.toISOString(),
+    respawn_at: respawnIso,
+    estimate_min: false,
+  })
+  loadingId.value = null
+  manualEdit.value = null
+  if (error) alert(error.message)
+  else await fetchKills()
+}
+
+async function clearKill(boss) {
+  const last = lastKill(boss.id)
+  if (!last) return
+  if (!confirm(`Удалить запись убийства «${boss.name}»?`)) return
+  loadingId.value = boss.id
+  const { error } = await supabase
+    .from('boss_kills')
+    .delete()
+    .eq('id', last.id)
   loadingId.value = null
   if (error) alert(error.message)
   else await fetchKills()
@@ -139,21 +195,22 @@ onUnmounted(() => {
         <button class="btn-ghost" @click="signOut">Выйти</button>
       </header>
 
-      <div class="columns">
+      <div class="categories">
         <section
           v-for="col in [
             { title: 'Low A', bosses: lowBosses },
             { title: 'High A', bosses: highBosses },
           ]"
           :key="col.title"
-          class="column"
+          class="category"
         >
           <h3 class="col-title">
             {{ col.title }}
             <span class="counter">{{ aliveCount(col.bosses) }}/{{ col.bosses.length }} живых</span>
           </h3>
 
-          <div class="cards">
+          <!-- Две колонки карточек внутри категории -->
+          <div class="cards-grid">
             <div
               v-for="boss in col.bosses"
               :key="boss.id"
@@ -167,7 +224,16 @@ onUnmounted(() => {
                   <span class="name">{{ boss.name }}</span>
                   <span class="lvl">Lv.{{ boss.level }}</span>
                 </div>
-                <div v-if="lastKill(boss.id)" class="meta">
+
+                <div v-if="manualEdit && manualEdit.bossId === boss.id" class="manual-form">
+                  <input type="datetime-local" v-model="manualEdit.value" class="manual-input" />
+                  <button class="kill-btn" @click="saveManual" :disabled="loadingId === boss.id">
+                    Сохранить
+                  </button>
+                  <button class="btn-ghost small" @click="cancelManual">Отмена</button>
+                </div>
+
+                <div v-else-if="lastKill(boss.id)" class="meta">
                   <span class="meta-item">Убит: {{ formatTime(lastKill(boss.id).killed_at) }}</span>
 
                   <template v-if="statusOf(boss) === 'respawning'">
@@ -181,19 +247,39 @@ onUnmounted(() => {
                     </span>
                   </template>
 
+                  <template v-else-if="statusOf(boss) === 'estimate_min'">
+                    <span class="meta-item estimate-min">
+                      По минималке: {{ RESPAWN_WINDOW[boss.tier].fixed + ESTIMATE_MIN_EXTRA_HOURS }}ч
+                      <span class="dim">(осталось {{ fmtMs(countdownMs(boss)) }})</span>
+                    </span>
+                  </template>
+
                   <span v-else-if="statusOf(boss) === 'dead'" class="meta-item respawn-dead">
                     Респавн: <b>пора проверять</b>
                   </span>
                 </div>
               </div>
 
-              <button
-                class="kill-btn"
-                @click="addKill(boss)"
-                :disabled="loadingId === boss.id"
-              >
-                {{ loadingId === boss.id ? '…' : 'Убил' }}
-              </button>
+              <div v-if="!manualEdit || manualEdit.bossId !== boss.id" class="actions">
+                <button class="kill-btn" @click="addKill(boss, false)" :disabled="loadingId === boss.id">
+                  {{ loadingId === boss.id ? '…' : 'Убил' }}
+                </button>
+                <button class="kill-btn min-btn" @click="addKill(boss, true)" :disabled="loadingId === boss.id" title="По минималке (фикс + 8ч)">
+                  По мин.
+                </button>
+                <button class="kill-btn ghost-btn" @click="openManual(boss)" :disabled="loadingId === boss.id" title="Ввести время вручную">
+                  ⏱
+                </button>
+                <button
+                  v-if="lastKill(boss.id)"
+                  class="kill-btn clear-btn"
+                  @click="clearKill(boss)"
+                  :disabled="loadingId === boss.id"
+                  title="Очистить запись"
+                >
+                  ✕
+                </button>
+              </div>
             </div>
           </div>
         </section>
@@ -213,11 +299,7 @@ onUnmounted(() => {
   box-sizing: border-box;
 }
 
-.login-hint {
-  text-align: center;
-  padding: 2rem;
-  color: #6b7280;
-}
+.login-hint { text-align: center; padding: 2rem; color: #6b7280; }
 
 .topbar {
   display: flex;
@@ -229,10 +311,7 @@ onUnmounted(() => {
   border: 1px solid #d3d7de;
   border-radius: 10px;
 }
-.email {
-  font-size: 0.85rem;
-  color: #5a6068;
-}
+.email { font-size: 0.85rem; color: #5a6068; }
 
 .btn-ghost {
   background: #ffffff;
@@ -244,22 +323,21 @@ onUnmounted(() => {
   cursor: pointer;
   transition: background 0.15s, border-color 0.15s;
 }
-.btn-ghost:hover {
-  background: #eef1f5;
-  border-color: #5b8def;
-}
+.btn-ghost:hover { background: #eef1f5; border-color: #5b8def; }
+.btn-ghost.small { padding: 0.25rem 0.5rem; font-size: 0.75rem; }
 
-.columns {
+/* Категории: Low A и High A — две колонки */
+.categories {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 1.25rem;
   align-items: start;
 }
-@media (max-width: 900px) {
-  .columns { grid-template-columns: 1fr; }
+@media (max-width: 1100px) {
+  .categories { grid-template-columns: 1fr; }
 }
 
-.column {
+.category {
   background: #f4f5f7;
   border: 1px solid #d3d7de;
   border-radius: 12px;
@@ -276,113 +354,115 @@ onUnmounted(() => {
   align-items: baseline;
   color: #1f2328;
 }
-.counter {
-  font-size: 0.75rem;
-  color: #6b7280;
-  font-weight: 400;
-}
+.counter { font-size: 0.75rem; color: #6b7280; font-weight: 400; }
 
-.cards {
-  display: flex;
-  flex-direction: column;
+/* Внутри категории — две колонки карточек */
+.cards-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
   gap: 0.4rem;
+}
+@media (max-width: 720px) {
+  .cards-grid { grid-template-columns: 1fr; }
 }
 
 .card {
   display: flex;
   align-items: center;
-  gap: 0.6rem;
-  padding: 0.45rem 0.75rem;
+  gap: 0.5rem;
+  padding: 0.4rem 0.6rem;
   border: 1px solid;
   border-radius: 8px;
+  min-width: 0;
   transition: transform 0.12s, box-shadow 0.15s;
 }
-.card:hover {
-  transform: translateY(-1px);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
-}
+.card:hover { transform: translateY(-1px); box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08); }
 
-.card.status-alive {
-  background: #e6f7ec;
-  border-color: #a8dcb8;
-}
-.card.status-respawning {
-  background: #fff5dd;
-  border-color: #f0d38a;
-}
-.card.status-dead {
-  background: #fde8e8;
-  border-color: #f0b0b0;
-}
+.card.status-alive        { background: #e6f7ec; border-color: #a8dcb8; }
+.card.status-respawning   { background: #ffeddb; border-color: #f0bf85; }
+.card.status-estimate_min { background: #fff8cc; border-color: #e6d47a; }
+.card.status-dead         { background: #fde8e8; border-color: #f0b0b0; }
 
-.dot {
-  width: 9px;
-  height: 9px;
-  border-radius: 50%;
-  flex-shrink: 0;
-}
-.dot-alive      { background: #34c26a; }
-.dot-respawning { background: #e0a520; }
-.dot-dead       { background: #e04a4a; }
+.dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+.dot-alive        { background: #34c26a; }
+.dot-respawning   { background: #e08a20; }
+.dot-estimate_min { background: #d4b820; }
+.dot-dead         { background: #e04a4a; }
 
-.card-main {
-  flex: 1;
-  min-width: 0;
-}
+.card-main { flex: 1; min-width: 0; }
 
-.name-row {
-  display: flex;
-  align-items: baseline;
-  gap: 0.4rem;
-  min-width: 0;
-}
+.name-row { display: flex; align-items: baseline; gap: 0.35rem; min-width: 0; }
 .name {
   font-weight: 600;
-  font-size: 0.88rem;
+  font-size: 0.8rem;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
   color: #1f2328;
 }
-.lvl {
-  font-size: 0.72rem;
-  color: #6b7280;
-  flex-shrink: 0;
-}
+.lvl { font-size: 0.68rem; color: #6b7280; flex-shrink: 0; }
 
 .meta {
-  margin-top: 2px;
-  font-size: 0.74rem;
-  line-height: 1.3;
+  margin-top: 1px;
+  font-size: 0.7rem;
+  line-height: 1.25;
   display: flex;
   flex-wrap: wrap;
-  gap: 0.75rem;
+  gap: 0.5rem;
 }
 .meta-item { color: #5a6068; white-space: nowrap; }
-.meta-item.respawn { color: #a06e00; font-weight: 500; }
+.meta-item.respawn { color: #a05c00; font-weight: 500; }
+.meta-item.estimate-min { color: #8a7a00; font-weight: 500; }
 .meta-item.respawn-dead { color: #b03030; font-weight: 500; }
 .dim { color: #8a9099; }
 
+.manual-form {
+  display: flex;
+  gap: 0.3rem;
+  align-items: center;
+  margin-top: 4px;
+  flex-wrap: wrap;
+}
+.manual-input {
+  padding: 0.25rem 0.4rem;
+  border: 1px solid #c4c9d2;
+  border-radius: 6px;
+  font-size: 0.72rem;
+  background: #fff;
+  color: #2a2d34;
+}
+
+.actions { display: flex; gap: 0.25rem; flex-shrink: 0; flex-wrap: wrap; justify-content: flex-end; }
+
 .kill-btn {
-  flex-shrink: 0;
   background: #5b8def;
   color: #fff;
   border: none;
-  padding: 0.35rem 0.85rem;
+  padding: 0.3rem 0.55rem;
   border-radius: 6px;
-  font-size: 0.78rem;
+  font-size: 0.72rem;
   font-weight: 500;
   cursor: pointer;
   transition: background 0.15s, transform 0.08s;
 }
-.kill-btn:hover:not(:disabled) {
-  background: #4a7ad6;
+.kill-btn:hover:not(:disabled) { background: #4a7ad6; }
+.kill-btn:active:not(:disabled) { transform: scale(0.97); }
+.kill-btn:disabled { opacity: 0.6; cursor: default; }
+
+.min-btn { background: #e0a520; }
+.min-btn:hover:not(:disabled) { background: #c8901a; }
+
+.ghost-btn {
+  background: #eef1f5;
+  color: #2a2d34;
+  border: 1px solid #d3d7de;
 }
-.kill-btn:active:not(:disabled) {
-  transform: scale(0.97);
+.ghost-btn:hover:not(:disabled) { background: #e2e6ec; border-color: #5b8def; }
+
+.clear-btn {
+  background: #fde8e8;
+  color: #b03030;
+  border: 1px solid #f0b0b0;
 }
-.kill-btn:disabled {
-  opacity: 0.6;
-  cursor: default;
-}
+.clear-btn:hover:not(:disabled) { background: #fbd6d6; }
 </style>
