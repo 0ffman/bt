@@ -7,16 +7,44 @@ import BossTracker from './components/BossTracker.vue'
 const session = ref(null)
 const needsUsername = ref(false)
 
-onMounted(() => {
-  supabase.auth.getSession().then(({ data }) => {
-    session.value = data.session
-    needsUsername.value = data.session && !data.session.user.user_metadata?.username
-  })
-  const { data } = supabase.auth.onAuthStateChange((_event, newSession) => {
+async function handleAuth() {
+  // Проверяем hash-параметры (если пришли с инвайт-ссылки)
+  const hashParams = new URLSearchParams(window.location.hash.substring(1))
+  const accessToken = hashParams.get('access_token')
+  const refreshToken = hashParams.get('refresh_token')
+  
+  if (accessToken) {
+    console.log('Найден access_token в URL — восстанавливаем сессию')
+    const { data, error } = await supabase.auth.setSession({
+      access_token: accessToken,
+      refresh_token: refreshToken || '',
+    })
+    if (error) {
+      console.error('Ошибка восстановления сессии:', error)
+    } else {
+      session.value = data.session
+      needsUsername.value = data.session && !data.session.user.user_metadata?.username
+      // Очищаем hash из URL
+      window.history.replaceState(null, '', window.location.pathname)
+      return
+    }
+  }
+  
+  // Если нет hash — просто получаем текущую сессию
+  const { data } = await supabase.auth.getSession()
+  session.value = data.session
+  needsUsername.value = data.session && !data.session.user.user_metadata?.username
+}
+
+onMounted(async () => {
+  await handleAuth()
+  
+  const { data: authData } = supabase.auth.onAuthStateChange((_event, newSession) => {
     session.value = newSession
     needsUsername.value = newSession && !newSession.user.user_metadata?.username
   })
-  onUnmounted(() => data.subscription.unsubscribe())
+
+  onUnmounted(() => authData.subscription.unsubscribe())
 })
 </script>
 
