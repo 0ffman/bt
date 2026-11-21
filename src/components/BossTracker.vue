@@ -7,8 +7,10 @@ import {
 } from '../bosses'
 
 const kills = ref([])
+const monitors = ref([])
 const loadingId = ref(null)
 const user = ref(null)
+const username = ref('')
 const now = ref(Date.now())
 let ticker = null
 
@@ -17,6 +19,7 @@ const manualEdit = ref(null)
 async function getUser() {
   const { data } = await supabase.auth.getUser()
   user.value = data.user
+  username.value = data.user?.user_metadata?.username || data.user?.email || '—'
 }
 
 async function fetchKills() {
@@ -25,6 +28,39 @@ async function fetchKills() {
     .select('*')
     .order('killed_at', { ascending: false })
   if (!error) kills.value = data
+}
+
+async function fetchMonitors() {
+  const { data, error } = await supabase
+    .from('boss_monitors')
+    .select('*')
+  if (!error) monitors.value = data
+}
+
+function monitorsFor(bossId) {
+  return monitors.value.filter(m => m.boss_id === bossId)
+}
+
+function isMonitoring(bossId) {
+  return monitors.value.some(m => m.boss_id === bossId && m.user_id === user.value?.id)
+}
+
+async function toggleMonitor(boss) {
+  if (!user.value) return
+  if (isMonitoring(boss.id)) {
+    await supabase
+      .from('boss_monitors')
+      .delete()
+      .eq('boss_id', boss.id)
+      .eq('user_id', user.value.id)
+  } else {
+    await supabase.from('boss_monitors').insert({
+      boss_id: boss.id,
+      user_id: user.value.id,
+      username: username.value,
+    })
+  }
+  await fetchMonitors()
 }
 
 function lastKill(bossId) {
@@ -174,7 +210,10 @@ async function signOut() {
 
 onMounted(async () => {
   await getUser()
-  if (user.value) await fetchKills()
+  if (user.value) {
+    await fetchKills()
+    await fetchMonitors()
+  }
   ticker = setInterval(() => { now.value = Date.now() }, 1000)
 })
 
@@ -191,7 +230,7 @@ onUnmounted(() => {
 
     <template v-else>
       <header class="topbar">
-        <span class="email">{{ user.email }}</span>
+        <span class="nick">Привет, <b>{{ username }}</b></span>
         <button class="btn-ghost" @click="signOut">Выйти</button>
       </header>
 
@@ -209,13 +248,14 @@ onUnmounted(() => {
             <span class="counter">{{ aliveCount(col.bosses) }}/{{ col.bosses.length }} живых</span>
           </h3>
 
-          <!-- Две колонки карточек внутри категории -->
           <div class="cards-grid">
             <div
               v-for="boss in col.bosses"
               :key="boss.id"
               class="card"
-              :class="`status-${statusOf(boss)}`"
+              :class="[`status-${statusOf(boss)}`, { 'is-monitored': isMonitoring(boss.id) }]"
+              @click="toggleMonitor(boss)"
+              :title="isMonitoring(boss.id) ? 'Перестать мониторить' : 'Мониторить'"
             >
               <span class="dot" :class="`dot-${statusOf(boss)}`" />
 
@@ -223,14 +263,17 @@ onUnmounted(() => {
                 <div class="name-row">
                   <span class="name">{{ boss.name }}</span>
                   <span class="lvl">Lv.{{ boss.level }}</span>
+                  <span v-if="monitorsFor(boss.id).length" class="monitors">
+                    👁 {{ monitorsFor(boss.id).map(m => m.username).join(', ') }}
+                  </span>
                 </div>
 
-                <div v-if="manualEdit && manualEdit.bossId === boss.id" class="manual-form">
+                <div v-if="manualEdit && manualEdit.bossId === boss.id" class="manual-form" @click.stop>
                   <input type="datetime-local" v-model="manualEdit.value" class="manual-input" />
-                  <button class="kill-btn" @click="saveManual" :disabled="loadingId === boss.id">
+                  <button class="kill-btn" @click.stop="saveManual" :disabled="loadingId === boss.id">
                     Сохранить
                   </button>
-                  <button class="btn-ghost small" @click="cancelManual">Отмена</button>
+                  <button class="btn-ghost small" @click.stop="cancelManual">Отмена</button>
                 </div>
 
                 <div v-else-if="lastKill(boss.id)" class="meta">
@@ -260,7 +303,7 @@ onUnmounted(() => {
                 </div>
               </div>
 
-              <div v-if="!manualEdit || manualEdit.bossId !== boss.id" class="actions">
+              <div v-if="!manualEdit || manualEdit.bossId !== boss.id" class="actions" @click.stop>
                 <button class="kill-btn" @click="addKill(boss, false)" :disabled="loadingId === boss.id">
                   {{ loadingId === boss.id ? '…' : 'Убил' }}
                 </button>
@@ -311,7 +354,7 @@ onUnmounted(() => {
   border: 1px solid #d3d7de;
   border-radius: 10px;
 }
-.email { font-size: 0.85rem; color: #5a6068; }
+.nick { font-size: 0.85rem; color: #5a6068; }
 
 .btn-ghost {
   background: #ffffff;
@@ -326,16 +369,13 @@ onUnmounted(() => {
 .btn-ghost:hover { background: #eef1f5; border-color: #5b8def; }
 .btn-ghost.small { padding: 0.25rem 0.5rem; font-size: 0.75rem; }
 
-/* Категории: Low A и High A — две колонки */
 .categories {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 1.25rem;
   align-items: start;
 }
-@media (max-width: 1100px) {
-  .categories { grid-template-columns: 1fr; }
-}
+@media (max-width: 1100px) { .categories { grid-template-columns: 1fr; } }
 
 .category {
   background: #f4f5f7;
@@ -356,15 +396,12 @@ onUnmounted(() => {
 }
 .counter { font-size: 0.75rem; color: #6b7280; font-weight: 400; }
 
-/* Внутри категории — две колонки карточек */
 .cards-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 0.4rem;
 }
-@media (max-width: 720px) {
-  .cards-grid { grid-template-columns: 1fr; }
-}
+@media (max-width: 720px) { .cards-grid { grid-template-columns: 1fr; } }
 
 .card {
   display: flex;
@@ -374,9 +411,14 @@ onUnmounted(() => {
   border: 1px solid;
   border-radius: 8px;
   min-width: 0;
+  cursor: pointer;
   transition: transform 0.12s, box-shadow 0.15s;
 }
 .card:hover { transform: translateY(-1px); box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08); }
+.card.is-monitored {
+  outline: 2px solid #5b8def;
+  outline-offset: 1px;
+}
 
 .card.status-alive        { background: #e6f7ec; border-color: #a8dcb8; }
 .card.status-respawning   { background: #ffeddb; border-color: #f0bf85; }
@@ -391,7 +433,7 @@ onUnmounted(() => {
 
 .card-main { flex: 1; min-width: 0; }
 
-.name-row { display: flex; align-items: baseline; gap: 0.35rem; min-width: 0; }
+.name-row { display: flex; align-items: baseline; gap: 0.35rem; min-width: 0; flex-wrap: wrap; }
 .name {
   font-weight: 600;
   font-size: 0.8rem;
@@ -401,6 +443,16 @@ onUnmounted(() => {
   color: #1f2328;
 }
 .lvl { font-size: 0.68rem; color: #6b7280; flex-shrink: 0; }
+
+.monitors {
+  font-size: 0.68rem;
+  color: #5b8def;
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 120px;
+}
 
 .meta {
   margin-top: 1px;

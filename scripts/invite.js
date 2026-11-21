@@ -22,7 +22,7 @@ async function generateInvite(email) {
     options: { redirectTo: REDIRECT_URL },
   })
   if (error) return console.error('Ошибка:', error.message)
-  console.log('\n✅ Ссылка:\n' + data.properties.actionLink + '\n')
+  console.log('\n✅ Ссылка:\n' + data.properties.action_link + '\n')
 }
 
-generateInvite('friend@example.com')
+generateInvite('boss@gmail.com')
