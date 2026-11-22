@@ -251,33 +251,43 @@ function sortBosses(list) {
   }
 
   async function saveManual() {
-    if (!manualEdit.value || !user.value) return
-    const { bossId, tier, value } = manualEdit.value
-    const killed = new Date(value)
-    if (isNaN(killed.getTime())) {
-      alert('Некорректная дата/время')
-      return
-    }
-    loadingId.value = bossId
-    const respawnIso = new Date(killed.getTime() + rollRespawnMs(tier)).toISOString()
-    const { error } = await supabase.from('boss_kills').insert({
-      boss_name: bossId,
-      user_id: user.value.id,
-      killed_at: killed.toISOString(),
-      respawn_at: respawnIso,
-      estimate_min: false,
-    })
-    loadingId.value = null
-    manualEdit.value = null
-    if (error) {
-      alert(error.message)
-    } else {
-      await supabase
-        .from('boss_monitors')
-        .delete()
-        .eq('boss_id', bossId)
-    }
+  if (!manualEdit.value || !user.value) return
+  const { bossId, tier, value } = manualEdit.value
+  const killed = new Date(value)
+  if (isNaN(killed.getTime())) {
+    alert('Некорректная дата/время')
+    return
   }
+  loadingId.value = bossId
+
+  // Сначала удаляем все старые записи для этого босса
+  await supabase
+    .from('boss_kills')
+    .delete()
+    .eq('boss_name', bossId)
+
+  // Теперь вставляем новую
+  const respawnIso = new Date(killed.getTime() + rollRespawnMs(tier)).toISOString()
+  const { error } = await supabase.from('boss_kills').insert({
+    boss_name: bossId,
+    user_id: user.value.id,
+    killed_at: killed.toISOString(),
+    respawn_at: respawnIso,
+    estimate_min: false,
+  })
+  loadingId.value = null
+  manualEdit.value = null
+  if (error) {
+    alert(error.message)
+  } else {
+    // Удаляем мониторы этого босса (тоже важно)
+    await supabase
+      .from('boss_monitors')
+      .delete()
+      .eq('boss_id', bossId)
+    // Данные обновятся через Realtime, но можно вызвать fetchKills для верности
+  }
+}
 
   async function clearKill(boss) {
     if (!confirm(`Удалить все записи убийства «${boss.name}»?`)) return
