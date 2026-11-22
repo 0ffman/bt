@@ -204,8 +204,17 @@ async function addKill(boss, estimateMin = false) {
     estimate_min: estimateMin,
   })
   loadingId.value = null
-  if (error) alert(error.message)
-  else await fetchKills()
+  if (error) {
+    alert(error.message)
+  } else {
+    await fetchKills()
+    // Снимаем мониторинг у всех, кто отслеживал этого босса
+    await supabase
+      .from('boss_monitors')
+      .delete()
+      .eq('boss_id', boss.id)
+    await fetchMonitors()
+  }
 }
 
 function openManual(boss) {
