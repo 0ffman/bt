@@ -155,16 +155,32 @@ export function useBossTracker() {
     return `${h}ч ${String(m).padStart(2, '0')}м ${String(s).padStart(2, '0')}с`
   }
 
-  const STATUS_ORDER = { alive: 0, respawning: 1, respawn_window: 2, estimate_min: 3 }
+  const STATUS_ORDER = { alive: 0, respawn_window: 1, respawning: 2, estimate_min: 3 }
 
-  function sortBosses(list) {
-    return [...list].sort((a, b) => {
-      const sa = STATUS_ORDER[statusOf(a)]
-      const sb = STATUS_ORDER[statusOf(b)]
-      if (sa !== sb) return sa - sb
-      return a.level - b.level || a.name.localeCompare(b.name)
-    })
+function getSortMs(boss) {
+  const status = statusOf(boss)
+  if (status === 'respawning' || status === 'estimate_min') {
+    return fixedLeft(boss)
   }
+  if (status === 'respawn_window') {
+    return randomLeft(boss)
+  }
+  return Infinity // для alive — без таймера, сортируем по уровню/имени
+}
+
+function sortBosses(list) {
+  return [...list].sort((a, b) => {
+    const sa = STATUS_ORDER[statusOf(a)]
+    const sb = STATUS_ORDER[statusOf(b)]
+    if (sa !== sb) return sa - sb
+
+    const timeA = getSortMs(a)
+    const timeB = getSortMs(b)
+    if (timeA !== timeB) return timeA - timeB
+
+    return a.level - b.level || a.name.localeCompare(b.name)
+  })
+}
 
   const lowBosses = computed(() => sortBosses(BOSSES.filter(b => b.tier === 'low')))
   const highBosses = computed(() => sortBosses(BOSSES.filter(b => b.tier === 'high')))

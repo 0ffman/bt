@@ -25,4 +25,4 @@ async function createUser(email, password, username) {
 }
 
 // Замени email, пароль и ник
-createUser('skks@gmail.com', 'skks123', 'SKKS')
+createUser('bulka@gmail.com', 'bulka123', 'Bulka')
