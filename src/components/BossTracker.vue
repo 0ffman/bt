@@ -3,7 +3,7 @@ import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { supabase } from '../supabase'
 import {
   BOSSES, rollRespawnMs, fixedRespawnMs,
-  RESPAWN_WINDOW, ESTIMATE_MIN_EXTRA_HOURS,
+  RESPAWN_WINDOW, getEstimateMinExtraHours,
 } from '../bosses'
 
 const kills = ref([])
@@ -72,20 +72,18 @@ function statusOf(boss) {
 
   const killedAt = new Date(last.killed_at).getTime()
   const fixedEnd = killedAt + fixedRespawnMs(boss.tier)
-  const respawnEnd = last.respawn_at
-    ? new Date(last.respawn_at).getTime()
-    : fixedEnd + rollRespawnMs(boss.tier)
+  const windowEnd = fixedEnd + (RESPAWN_WINDOW[boss.tier]?.randomMax ?? 4) * 3600 * 1000
 
   const nowMs = now.value
 
   if (last.estimate_min) {
-    const minEnd = killedAt + fixedRespawnMs(boss.tier) + ESTIMATE_MIN_EXTRA_HOURS * 3600 * 1000
+    const minEnd = killedAt + fixedRespawnMs(boss.tier) + getEstimateMinExtraHours(boss.tier) * 3600 * 1000
     if (nowMs < minEnd) return 'estimate_min'
     return 'alive'
   }
 
   if (nowMs < fixedEnd) return 'respawning'
-  if (nowMs < respawnEnd) return 'respawn_window'
+  if (nowMs < windowEnd) return 'respawn_window'
   return 'alive'
 }
 
@@ -97,7 +95,7 @@ function countdownMs(boss) {
   let respawnTime
 
   if (last.estimate_min) {
-    respawnTime = killedAt + fixedRespawnMs(boss.tier) + ESTIMATE_MIN_EXTRA_HOURS * 3600 * 1000
+    respawnTime = killedAt + fixedRespawnMs(boss.tier) + getEstimateMinExtraHours(boss.tier) * 3600 * 1000
   } else if (last.respawn_at) {
     respawnTime = new Date(last.respawn_at).getTime()
   } else {
@@ -113,7 +111,7 @@ function fixedLeft(boss) {
 
   let fixedEnd
   if (last.estimate_min) {
-    fixedEnd = new Date(last.killed_at).getTime() + fixedRespawnMs(boss.tier) + ESTIMATE_MIN_EXTRA_HOURS * 3600 * 1000
+    fixedEnd = new Date(last.killed_at).getTime() + fixedRespawnMs(boss.tier) + getEstimateMinExtraHours(boss.tier) * 3600 * 1000
   } else {
     fixedEnd = new Date(last.killed_at).getTime() + fixedRespawnMs(boss.tier)
   }
@@ -125,8 +123,23 @@ function randomLeft(boss) {
   if (!last || last.estimate_min) return 0
   const killedAt = new Date(last.killed_at).getTime()
   const fixedEnd = killedAt + fixedRespawnMs(boss.tier)
-  const windowEnd = fixedEnd + RESPAWN_WINDOW[boss.tier].randomMax * 3600 * 1000
+  const windowEnd = fixedEnd + (RESPAWN_WINDOW[boss.tier]?.randomMax ?? 4) * 3600 * 1000
   return Math.max(0, windowEnd - Math.max(now.value, fixedEnd))
+}
+
+function fmtHours(hours) {
+  if (hours >= 1) {
+    if (Number.isInteger(hours)) return `${hours}ч`
+    return `${hours.toFixed(1)}ч`
+  } else {
+    const totalSeconds = Math.round(hours * 3600)
+    if (totalSeconds >= 60) {
+      const minutes = Math.round(hours * 60)
+      return `${minutes}м`
+    } else {
+      return `${totalSeconds}с`
+    }
+  }
 }
 
 function fmtMs(ms) {
@@ -150,6 +163,7 @@ function sortBosses(list) {
 
 const lowBosses = computed(() => sortBosses(BOSSES.filter(b => b.tier === 'low')))
 const highBosses = computed(() => sortBosses(BOSSES.filter(b => b.tier === 'high')))
+const testBosses = computed(() => sortBosses(BOSSES.filter(b => b.tier.startsWith('test_'))))
 
 function aliveCount(list) {
   return list.filter(b => statusOf(b) === 'alive').length
@@ -157,6 +171,10 @@ function aliveCount(list) {
 
 async function addKill(boss, estimateMin = false) {
   if (!user.value) return
+  if (!estimateMin && statusOf(boss) === 'respawning') {
+    alert('Босс ещё не реснулся!')
+    return
+  }
   loadingId.value = boss.id
 
   let killTime
@@ -170,7 +188,7 @@ async function addKill(boss, estimateMin = false) {
     } else {
       killTime = new Date().toISOString()
     }
-    respawnMs = fixedRespawnMs(boss.tier) + ESTIMATE_MIN_EXTRA_HOURS * 3600 * 1000
+    respawnMs = fixedRespawnMs(boss.tier) + getEstimateMinExtraHours(boss.tier) * 3600 * 1000
   } else {
     killTime = new Date().toISOString()
     respawnMs = rollRespawnMs(boss.tier)
@@ -318,9 +336,7 @@ onUnmounted(() => {
 
               <div v-if="manualEdit && manualEdit.bossId === boss.id" class="manual-form" @click.stop>
                 <input type="datetime-local" v-model="manualEdit.value" class="manual-input" />
-                <button class="kill-btn" @click.stop="saveManual" :disabled="loadingId === boss.id">
-                  Сохранить
-                </button>
+                <button class="kill-btn" @click.stop="saveManual" :disabled="loadingId === boss.id">Сохранить</button>
                 <button class="btn-ghost small" @click.stop="cancelManual">Отмена</button>
               </div>
 
@@ -330,27 +346,27 @@ onUnmounted(() => {
                     Убит: {{ formatTime(lastKill(boss.id).killed_at) }}
                   </span>
                   <span class="meta-item respawn">
-                    Фикс: {{ RESPAWN_WINDOW[boss.tier].fixed }}ч
+                    Фикс: {{ fmtHours(RESPAWN_WINDOW[boss.tier].fixed) }}
                     <span class="dim">(осталось {{ fmtMs(fixedLeft(boss)) }})</span>
                   </span>
                 </template>
 
                 <template v-else-if="statusOf(boss) === 'respawn_window'">
-  <span class="meta-item respawn-window">
-    Убит: {{ formatTime(lastKill(boss.id).killed_at) }}
-  </span>
-  <span class="meta-item respawn-window">
-    Окно: {{ RESPAWN_WINDOW[boss.tier].randomMax }}ч
-    <span class="dim">(осталось {{ fmtMs(randomLeft(boss)) }})</span>
-  </span>
-</template>
+                  <span class="meta-item respawn-window">
+                    Убит: {{ formatTime(lastKill(boss.id).killed_at) }}
+                  </span>
+                  <span class="meta-item respawn-window">
+                    Окно: {{ fmtHours(RESPAWN_WINDOW[boss.tier].randomMax) }}
+                    <span class="dim">(осталось {{ fmtMs(randomLeft(boss)) }})</span>
+                  </span>
+                </template>
 
                 <template v-else-if="statusOf(boss) === 'estimate_min'">
                   <span class="meta-item estimate-min">
                     По мин.: {{ formatTime(lastKill(boss.id).killed_at) }}
                   </span>
                   <span class="meta-item estimate-min">
-                    Респавн: {{ RESPAWN_WINDOW[boss.tier].fixed + ESTIMATE_MIN_EXTRA_HOURS }}ч
+                    Респавн: {{ fmtHours(RESPAWN_WINDOW[boss.tier].fixed + getEstimateMinExtraHours(boss.tier)) }}
                     <span class="dim">(осталось {{ fmtMs(fixedLeft(boss)) }})</span>
                   </span>
                 </template>
@@ -363,12 +379,12 @@ onUnmounted(() => {
 
             <div v-if="!manualEdit || manualEdit.bossId !== boss.id" class="actions" @click.stop>
               <button
-  class="kill-btn"
-  @click="addKill(boss, false)"
-  :disabled="loadingId === boss.id || statusOf(boss) === 'respawning' || statusOf(boss) === 'respawn_window'"
->
-  {{ loadingId === boss.id ? '…' : 'Убил' }}
-</button>
+                class="kill-btn"
+                @click="addKill(boss, false)"
+                :disabled="loadingId === boss.id || statusOf(boss) === 'respawning'"
+              >
+                {{ loadingId === boss.id ? '…' : 'Убил' }}
+              </button>
               <button class="kill-btn min-btn" @click="addKill(boss, true)" :disabled="loadingId === boss.id">
                 По мин.
               </button>
@@ -389,6 +405,104 @@ onUnmounted(() => {
         </div>
       </section>
     </div>
+
+    <section v-if="testBosses.length" class="test-section">
+      <h3 class="test-title">TEST</h3>
+      <div class="cards-grid">
+        <div
+          v-for="boss in testBosses"
+          :key="boss.id"
+          class="card"
+          :class="[`status-${statusOf(boss)}`, { 'is-monitored': isMonitoring(boss.id) }]"
+          @click="toggleMonitor(boss)"
+          :title="isMonitoring(boss.id) ? 'Перестать мониторить' : 'Мониторить'"
+        >
+          <span class="dot" :class="`dot-${statusOf(boss)}`" />
+
+          <div class="card-main">
+            <div class="name-row">
+              <span class="name">{{ boss.name }}</span>
+              <span class="lvl">Lv.{{ boss.level }}</span>
+              <span
+                v-if="monitorsFor(boss.id).length"
+                class="monitors"
+                :title="monitorsFor(boss.id).map(m => m.username).join(', ')"
+              >
+                <span class="monitors-icon">👁</span>
+                <span class="monitors-names">{{ monitorsFor(boss.id).map(m => m.username).join(', ') }}</span>
+              </span>
+            </div>
+
+            <div v-if="manualEdit && manualEdit.bossId === boss.id" class="manual-form" @click.stop>
+              <input type="datetime-local" v-model="manualEdit.value" class="manual-input" />
+              <button class="kill-btn" @click.stop="saveManual" :disabled="loadingId === boss.id">Сохранить</button>
+              <button class="btn-ghost small" @click.stop="cancelManual">Отмена</button>
+            </div>
+
+            <div v-else-if="lastKill(boss.id)" class="meta">
+              <template v-if="statusOf(boss) === 'respawning'">
+                <span class="meta-item respawn">
+                  Убит: {{ formatTime(lastKill(boss.id).killed_at) }}
+                </span>
+                <span class="meta-item respawn">
+                  Фикс: {{ fmtHours(RESPAWN_WINDOW[boss.tier]?.fixed ?? 10) }}
+                  <span class="dim">(осталось {{ fmtMs(fixedLeft(boss)) }})</span>
+                </span>
+              </template>
+
+              <template v-else-if="statusOf(boss) === 'respawn_window'">
+                <span class="meta-item respawn-window">
+                  Убит: {{ formatTime(lastKill(boss.id).killed_at) }}
+                </span>
+                <span class="meta-item respawn-window">
+                  Окно: {{ fmtHours(RESPAWN_WINDOW[boss.tier]?.randomMax ?? 4) }}
+                  <span class="dim">(осталось {{ fmtMs(randomLeft(boss)) }})</span>
+                </span>
+              </template>
+
+              <template v-else-if="statusOf(boss) === 'estimate_min'">
+                <span class="meta-item estimate-min">
+                  По мин.: {{ formatTime(lastKill(boss.id).killed_at) }}
+                </span>
+                <span class="meta-item estimate-min">
+                  Респавн: {{ fmtHours((RESPAWN_WINDOW[boss.tier]?.fixed ?? 10) + getEstimateMinExtraHours(boss.tier)) }}
+                  <span class="dim">(осталось {{ fmtMs(fixedLeft(boss)) }})</span>
+                </span>
+              </template>
+
+              <span v-else class="meta-item alive">
+                Реснулся: {{ formatTime(lastKill(boss.id).respawn_at) }}
+              </span>
+            </div>
+          </div>
+
+          <div v-if="!manualEdit || manualEdit.bossId !== boss.id" class="actions" @click.stop>
+            <button
+              class="kill-btn"
+              @click="addKill(boss, false)"
+              :disabled="loadingId === boss.id || statusOf(boss) === 'respawning'"
+            >
+              {{ loadingId === boss.id ? '…' : 'Убил' }}
+            </button>
+            <button class="kill-btn min-btn" @click="addKill(boss, true)" :disabled="loadingId === boss.id">
+              По мин.
+            </button>
+            <button class="kill-btn ghost-btn" @click="openManual(boss)" :disabled="loadingId === boss.id" title="Ввести время">
+              ⏱
+            </button>
+            <button
+              v-if="lastKill(boss.id)"
+              class="kill-btn clear-btn"
+              @click="clearKill(boss)"
+              :disabled="loadingId === boss.id"
+              title="Очистить"
+            >
+              ✕
+            </button>
+          </div>
+        </div>
+      </div>
+    </section>
   </div>
 </template>
 
@@ -602,4 +716,19 @@ onUnmounted(() => {
   border: 1px solid #f0b0b0;
 }
 .clear-btn:hover:not(:disabled) { background: #fbd6d6; }
+
+/* Тестовая секция */
+.test-section {
+  margin-top: 2rem;
+  padding: 0.9rem;
+  background: #f0f0f0;
+  border-radius: 12px;
+}
+.test-title {
+  margin: 0 0 0.75rem;
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: #666;
+  font-style: italic;
+}
 </style>

@@ -39,16 +39,25 @@ export const BOSSES = [
   { id: 'flamestone', name: 'Flamestone Giant', level: 74, tier: 'high' },
   { id: 'cloe', name: 'Antharas Priest Cloe', level: 74, tier: 'high' },
   { id: 'sobekk', name: 'Krokian Padisha Sobekk', level: 74, tier: 'high' },
+
+  { id: 'test_low', name: 'TEST Low (1м + 30с)', level: 1, tier: 'test_low' },
+  { id: 'test_high', name: 'TEST High (2м + 1м)', level: 1, tier: 'test_high' },
 ]
 
 // Окно респавна в часах: фикс + случайная добавка
 export const RESPAWN_WINDOW = {
   low:  { fixed: 10, randomMax: 4 },
   high: { fixed: 12, randomMax: 4 },
+
+  test_low:  { fixed: 1 / 60, randomMax: 30 / 3600 },   // 1 минута + 30 секунд
+  test_high: { fixed: 2 / 60, randomMax: 1 / 60 },     // 2 минуты + 1 минута
 }
 
 // «По минималке»: фикс + 8ч (разброс 4+4)
-export const ESTIMATE_MIN_EXTRA_HOURS = 8
+export function getEstimateMinExtraHours(tier) {
+  if (tier.startsWith('test_')) return 2 / 60 // 2 минуты (в часах)
+  return 8 // hours для обычных боссов
+}
 
 export function fixedRespawnMs(tier) {
   return (RESPAWN_WINDOW[tier]?.fixed ?? 10) * 3600 * 1000
