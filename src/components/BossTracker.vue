@@ -122,10 +122,11 @@ function fixedLeft(boss) {
 
 function randomLeft(boss) {
   const last = lastKill(boss.id)
-  if (!last || !last.respawn_at || last.estimate_min) return 0
-  const randomEnd = new Date(last.respawn_at).getTime()
-  const fixedEnd = new Date(last.killed_at).getTime() + fixedRespawnMs(boss.tier)
-  return Math.max(0, randomEnd - Math.max(now.value, fixedEnd))
+  if (!last || last.estimate_min) return 0
+  const killedAt = new Date(last.killed_at).getTime()
+  const fixedEnd = killedAt + fixedRespawnMs(boss.tier)
+  const windowEnd = fixedEnd + RESPAWN_WINDOW[boss.tier].randomMax * 3600 * 1000
+  return Math.max(0, windowEnd - Math.max(now.value, fixedEnd))
 }
 
 function fmtMs(ms) {
@@ -335,14 +336,14 @@ onUnmounted(() => {
                 </template>
 
                 <template v-else-if="statusOf(boss) === 'respawn_window'">
-                  <span class="meta-item respawn-window">
-                    Убит: {{ formatTime(lastKill(boss.id).killed_at) }}
-                  </span>
-                  <span class="meta-item respawn-window">
-                    Окно: {{ RESPAWN_WINDOW[boss.tier].randomMax }}ч
-                    <span class="dim">(осталось {{ fmtMs(randomLeft(boss)) }})</span>
-                  </span>
-                </template>
+  <span class="meta-item respawn-window">
+    Убит: {{ formatTime(lastKill(boss.id).killed_at) }}
+  </span>
+  <span class="meta-item respawn-window">
+    Окно: {{ RESPAWN_WINDOW[boss.tier].randomMax }}ч
+    <span class="dim">(осталось {{ fmtMs(randomLeft(boss)) }})</span>
+  </span>
+</template>
 
                 <template v-else-if="statusOf(boss) === 'estimate_min'">
                   <span class="meta-item estimate-min">
