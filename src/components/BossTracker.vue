@@ -361,9 +361,13 @@ onUnmounted(() => {
             </div>
 
             <div v-if="!manualEdit || manualEdit.bossId !== boss.id" class="actions" @click.stop>
-              <button class="kill-btn" @click="addKill(boss, false)" :disabled="loadingId === boss.id">
-                {{ loadingId === boss.id ? '…' : 'Убил' }}
-              </button>
+              <button
+  class="kill-btn"
+  @click="addKill(boss, false)"
+  :disabled="loadingId === boss.id || statusOf(boss) === 'respawning' || statusOf(boss) === 'respawn_window'"
+>
+  {{ loadingId === boss.id ? '…' : 'Убил' }}
+</button>
               <button class="kill-btn min-btn" @click="addKill(boss, true)" :disabled="loadingId === boss.id">
                 По мин.
               </button>
