@@ -520,7 +520,7 @@ onUnmounted(() => {
 .tracker {
   width: 100%;
   padding: 1.25rem 1.5rem;
-  color: #2a2d34;
+  color: #1e2024;
   font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
   background: #e9ebef;
   min-height: 100vh;
@@ -533,16 +533,17 @@ onUnmounted(() => {
   align-items: center;
   margin-bottom: 1.25rem;
   padding: 0.6rem 0.9rem;
-  background: #f4f5f7;
-  border: 1px solid #d3d7de;
+  background: #ffffff;
+  border: 1px solid #cbd0d9;
   border-radius: 10px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.04);
 }
-.nick { font-size: 0.85rem; color: #5a6068; }
+.nick { font-size: 0.85rem; color: #4a5058; }
 
 .btn-ghost {
   background: #ffffff;
-  border: 1px solid #d3d7de;
-  color: #2a2d34;
+  border: 1px solid #cbd0d9;
+  color: #1e2024;
   padding: 0.35rem 0.8rem;
   border-radius: 6px;
   font-size: 0.8rem;
@@ -561,10 +562,11 @@ onUnmounted(() => {
 @media (max-width: 1100px) { .categories { grid-template-columns: 1fr; } }
 
 .category {
-  background: #f4f5f7;
-  border: 1px solid #d3d7de;
+  background: #ffffff;
+  border: 1px solid #cbd0d9;
   border-radius: 12px;
   padding: 0.9rem;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.04);
 }
 
 .col-title {
@@ -575,14 +577,14 @@ onUnmounted(() => {
   display: flex;
   justify-content: space-between;
   align-items: baseline;
-  color: #1f2328;
+  color: #16181c;
 }
 .counter { font-size: 0.75rem; color: #6b7280; font-weight: 400; }
 
 .cards-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 0.4rem;
+  gap: 0.5rem;
 }
 @media (max-width: 720px) { .cards-grid { grid-template-columns: 1fr; } }
 
@@ -590,49 +592,51 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   gap: 0.5rem;
-  padding: 0.4rem 0.6rem;
+  padding: 0.5rem 0.6rem;
   border: 1px solid;
   border-radius: 8px;
   min-width: 0;
   cursor: pointer;
   transition: transform 0.12s, box-shadow 0.15s;
+  background: #ffffff;
 }
 .card:hover { transform: translateY(-1px); box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08); }
 .card.is-monitored {
-  outline: 2px solid #5b8def;
+  outline: 2px solid #3a7bd5;
   outline-offset: 1px;
 }
 
-.card.status-respawning     { background: #fde8e8; border-color: #f0b0b0; }
-.card.status-respawn_window { background: #ffeddb; border-color: #f0bf85; }
-.card.status-estimate_min   { background: #fff8cc; border-color: #e6d47a; }
-.card.status-alive          { background: #e6f7ec; border-color: #a8dcb8; }
+/* Статусы с чёткими границами и насыщенными цветами */
+.card.status-respawning     { background: #ffe6e6; border-color: #d96c6c; }
+.card.status-respawn_window { background: #ffe4c4; border-color: #d98c40; }
+.card.status-estimate_min   { background: #fff2b0; border-color: #d4b820; }
+.card.status-alive          { background: #daf0e0; border-color: #68b88a; }
 
-.dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
-.dot-respawning     { background: #e04a4a; }
-.dot-respawn_window { background: #e08a20; }
-.dot-estimate_min   { background: #d4b820; }
-.dot-alive          { background: #34c26a; }
+.dot { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; border: 1px solid rgba(0,0,0,0.08); }
+.dot-respawning     { background: #d93030; }
+.dot-respawn_window { background: #d98020; }
+.dot-estimate_min   { background: #c4a000; }
+.dot-alive          { background: #28a05a; }
 
 .card-main { flex: 1; min-width: 0; }
 
 .name-row { display: flex; align-items: baseline; gap: 0.35rem; min-width: 0; flex-wrap: wrap; }
 .name {
   font-weight: 600;
-  font-size: 0.8rem;
+  font-size: 0.85rem;
   word-break: break-word;
-  color: #1f2328;
+  color: #1e2024;
 }
-.lvl { font-size: 0.68rem; color: #6b7280; flex-shrink: 0; }
+.lvl { font-size: 0.7rem; color: #6b7280; flex-shrink: 0; }
 
 .monitors-wrapper {
   font-size: 0.75rem;
-  color: #5b8def;
+  color: #3a6edb;
   font-weight: 600;
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  background: rgba(91, 141, 239, 0.12);
+  background: rgba(58, 110, 219, 0.12);
   padding: 2px 8px 2px 6px;
   border-radius: 12px;
   cursor: default;
@@ -644,7 +648,7 @@ onUnmounted(() => {
   flex-shrink: 0;
 }
 .monitors-wrapper:hover {
-  background: rgba(91, 141, 239, 0.2);
+  background: rgba(58, 110, 219, 0.2);
 }
 
 .monitors-icon {
@@ -654,26 +658,27 @@ onUnmounted(() => {
 }
 
 .monitors-list {
-  font-size: 0.78rem;
+  font-size: 0.8rem;
   color: #2b5ed9;
+  font-weight: 600;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
 .meta {
-  margin-top: 1px;
-  font-size: 0.7rem;
-  line-height: 1.25;
+  margin-top: 2px;
+  font-size: 0.72rem;
+  line-height: 1.3;
   display: flex;
   flex-wrap: wrap;
   gap: 0.5rem;
 }
-.meta-item { color: #5a6068; white-space: nowrap; }
-.meta-item.respawn { color: #b03030; font-weight: 500; }
-.meta-item.respawn-window { color: #a05c00; font-weight: 500; }
-.meta-item.estimate-min { color: #8a7a00; font-weight: 500; }
-.meta-item.alive { color: #1a7a3a; font-weight: 500; }
+.meta-item { color: #4a5058; white-space: nowrap; }
+.meta-item.respawn { color: #b03030; font-weight: 600; }
+.meta-item.respawn-window { color: #a05c00; font-weight: 600; }
+.meta-item.estimate-min { color: #8a7a00; font-weight: 600; }
+.meta-item.alive { color: #1a7a3a; font-weight: 600; }
 .dim { color: #8a9099; }
 
 .manual-form {
@@ -689,49 +694,91 @@ onUnmounted(() => {
   border-radius: 6px;
   font-size: 0.72rem;
   background: #fff;
-  color: #2a2d34;
+  color: #1e2024;
 }
 
 .actions {
   display: flex;
-  gap: 0.25rem;
+  gap: 0.3rem;
   flex-shrink: 0;
   flex-wrap: wrap;
   justify-content: flex-end;
   align-items: center;
 }
 
+/* Основной стиль кнопок – чёткие, с тенью, насыщенные */
 .kill-btn {
-  background: #5b8def;
-  color: #fff;
   border: none;
-  padding: 0.3rem 0.55rem;
+  padding: 0.35rem 0.6rem;
   border-radius: 6px;
-  font-size: 0.72rem;
-  font-weight: 500;
+  font-size: 0.75rem;
+  font-weight: 600;
   cursor: pointer;
-  transition: background 0.15s, transform 0.08s;
+  transition: background 0.12s, transform 0.06s, box-shadow 0.12s;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.15);
 }
-.kill-btn:hover:not(:disabled) { background: #4a7ad6; }
-.kill-btn:active:not(:disabled) { transform: scale(0.97); }
-.kill-btn:disabled { opacity: 0.6; cursor: default; }
 
-.min-btn { background: #e0a520; }
-.min-btn:hover:not(:disabled) { background: #c8901a; }
+.kill-btn:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 2px 6px rgba(0,0,0,0.2);
+}
 
+.kill-btn:active:not(:disabled) {
+  transform: translateY(0);
+  box-shadow: 0 1px 2px rgba(0,0,0,0.15);
+}
+
+.kill-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+  box-shadow: none;
+}
+
+/* Кнопка Убил – яркая, уверенная */
+.kill-btn:not(.min-btn):not(.ghost-btn):not(.clear-btn) {
+  background: #2a7de0;
+  color: #ffffff;
+}
+.kill-btn:not(.min-btn):not(.ghost-btn):not(.clear-btn):hover:not(:disabled) {
+  background: #1a6bc8;
+}
+
+/* Кнопка По мин. – оранжевая, не сливается с жёлтым фоном */
+.min-btn {
+  background: #d98c20;
+  color: #ffffff;
+}
+.min-btn:hover:not(:disabled) {
+  background: #c07c18;
+}
+.min-btn:disabled {
+  background: #c0a060;
+  color: #fff;
+  opacity: 0.6;
+}
+
+/* Кнопка ⏱ – серая с обводкой */
 .ghost-btn {
-  background: #eef1f5;
-  color: #2a2d34;
-  border: 1px solid #d3d7de;
+  background: #f0f2f5;
+  color: #1e2024;
+  border: 1px solid #cbd0d9;
+  box-shadow: none;
 }
-.ghost-btn:hover:not(:disabled) { background: #e2e6ec; border-color: #5b8def; }
+.ghost-btn:hover:not(:disabled) {
+  background: #e2e6ec;
+  border-color: #5b8def;
+}
 
+/* Кнопка ✕ – красная */
 .clear-btn {
-  background: #fde8e8;
+  background: #e6d0d0;
   color: #b03030;
-  border: 1px solid #f0b0b0;
+  border: 1px solid #c09292;
+  box-shadow: none;
 }
-.clear-btn:hover:not(:disabled) { background: #fbd6d6; }
+.clear-btn:hover:not(:disabled) {
+  background: #dbb8b8;
+}
 
 @media (max-width: 400px) {
   .card {
@@ -757,7 +804,6 @@ onUnmounted(() => {
   }
 
   .monitors-wrapper {
-    max-width: 100%;
     width: 100%;
     justify-content: flex-start;
   }
@@ -782,14 +828,14 @@ onUnmounted(() => {
 .test-section {
   margin-top: 2rem;
   padding: 0.9rem;
-  background: #f0f0f0;
+  background: #f4f5f7;
   border-radius: 12px;
 }
 .test-title {
   margin: 0 0 0.75rem;
   font-size: 0.95rem;
   font-weight: 600;
-  color: #666;
+  color: #6b7280;
   font-style: italic;
 }
 </style>
