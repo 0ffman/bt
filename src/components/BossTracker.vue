@@ -74,12 +74,13 @@ function statusOf(boss) {
   const fixedEnd = killedAt + fixedRespawnMs(boss.tier)
   const respawnEnd = last.respawn_at
     ? new Date(last.respawn_at).getTime()
-    : fixedEnd
+    : fixedEnd + rollRespawnMs(boss.tier)
 
   const nowMs = now.value
 
   if (last.estimate_min) {
-    if (nowMs < respawnEnd) return 'estimate_min'
+    const minEnd = killedAt + fixedRespawnMs(boss.tier) + ESTIMATE_MIN_EXTRA_HOURS * 3600 * 1000
+    if (nowMs < minEnd) return 'estimate_min'
     return 'alive'
   }
 
@@ -88,16 +89,40 @@ function statusOf(boss) {
   return 'alive'
 }
 
+function countdownMs(boss) {
+  const last = lastKill(boss.id)
+  if (!last) return 0
+
+  const killedAt = new Date(last.killed_at).getTime()
+  let respawnTime
+
+  if (last.estimate_min) {
+    respawnTime = killedAt + fixedRespawnMs(boss.tier) + ESTIMATE_MIN_EXTRA_HOURS * 3600 * 1000
+  } else if (last.respawn_at) {
+    respawnTime = new Date(last.respawn_at).getTime()
+  } else {
+    respawnTime = killedAt + fixedRespawnMs(boss.tier) + rollRespawnMs(boss.tier)
+  }
+
+  return Math.max(0, respawnTime - now.value)
+}
+
 function fixedLeft(boss) {
   const last = lastKill(boss.id)
   if (!last) return 0
-  const fixedEnd = new Date(last.killed_at).getTime() + fixedRespawnMs(boss.tier)
+
+  let fixedEnd
+  if (last.estimate_min) {
+    fixedEnd = new Date(last.killed_at).getTime() + fixedRespawnMs(boss.tier) + ESTIMATE_MIN_EXTRA_HOURS * 3600 * 1000
+  } else {
+    fixedEnd = new Date(last.killed_at).getTime() + fixedRespawnMs(boss.tier)
+  }
   return Math.max(0, fixedEnd - now.value)
 }
 
 function randomLeft(boss) {
   const last = lastKill(boss.id)
-  if (!last || !last.respawn_at) return 0
+  if (!last || !last.respawn_at || last.estimate_min) return 0
   const randomEnd = new Date(last.respawn_at).getTime()
   const fixedEnd = new Date(last.killed_at).getTime() + fixedRespawnMs(boss.tier)
   return Math.max(0, randomEnd - Math.max(now.value, fixedEnd))
@@ -132,21 +157,21 @@ function aliveCount(list) {
 async function addKill(boss, estimateMin = false) {
   if (!user.value) return
   loadingId.value = boss.id
-  const nowIso = new Date().toISOString()
-  let killTime, respawnMs
+
+  let killTime
+  let respawnMs
 
   if (estimateMin) {
-    // Время убийства = начало окна респавна (момент, когда босс перешёл из красного в оранжевый)
     const last = lastKill(boss.id)
     if (last) {
       const fixedEnd = new Date(last.killed_at).getTime() + fixedRespawnMs(boss.tier)
       killTime = new Date(fixedEnd).toISOString()
     } else {
-      killTime = nowIso
+      killTime = new Date().toISOString()
     }
     respawnMs = fixedRespawnMs(boss.tier) + ESTIMATE_MIN_EXTRA_HOURS * 3600 * 1000
   } else {
-    killTime = nowIso
+    killTime = new Date().toISOString()
     respawnMs = rollRespawnMs(boss.tier)
   }
 
@@ -280,8 +305,13 @@ onUnmounted(() => {
               <div class="name-row">
                 <span class="name">{{ boss.name }}</span>
                 <span class="lvl">Lv.{{ boss.level }}</span>
-                <span v-if="monitorsFor(boss.id).length" class="monitors">
-                  👁 {{ monitorsFor(boss.id).map(m => m.username).join(', ') }}
+                <span
+                  v-if="monitorsFor(boss.id).length"
+                  class="monitors"
+                  :title="monitorsFor(boss.id).map(m => m.username).join(', ')"
+                >
+                  <span class="monitors-icon">👁</span>
+                  <span class="monitors-names">{{ monitorsFor(boss.id).map(m => m.username).join(', ') }}</span>
                 </span>
               </div>
 
@@ -294,28 +324,38 @@ onUnmounted(() => {
               </div>
 
               <div v-else-if="lastKill(boss.id)" class="meta">
-                <span class="meta-item">Убит: {{ formatTime(lastKill(boss.id).killed_at) }}</span>
-
                 <template v-if="statusOf(boss) === 'respawning'">
-                  <span v-if="fixedLeft(boss) > 0" class="meta-item respawn">
-                    Респавн: {{ RESPAWN_WINDOW[boss.tier].fixed }}ч
-                    <span class="dim">(осталось {{ fmtMs(countdownMs(boss)) }})</span>
+                  <span class="meta-item respawn">
+                    Убит: {{ formatTime(lastKill(boss.id).killed_at) }}
                   </span>
-                  <span v-else class="meta-item respawn">
-                    Респавн: {{ RESPAWN_WINDOW[boss.tier].fixed }}ч
-                    <span class="dim">(+{{ fmtMs(randomLeft(boss)) }})</span>
+                  <span class="meta-item respawn">
+                    Фикс: {{ RESPAWN_WINDOW[boss.tier].fixed }}ч
+                    <span class="dim">(осталось {{ fmtMs(fixedLeft(boss)) }})</span>
+                  </span>
+                </template>
+
+                <template v-else-if="statusOf(boss) === 'respawn_window'">
+                  <span class="meta-item respawn-window">
+                    Убит: {{ formatTime(lastKill(boss.id).killed_at) }}
+                  </span>
+                  <span class="meta-item respawn-window">
+                    Окно: {{ RESPAWN_WINDOW[boss.tier].randomMax }}ч
+                    <span class="dim">(осталось {{ fmtMs(randomLeft(boss)) }})</span>
                   </span>
                 </template>
 
                 <template v-else-if="statusOf(boss) === 'estimate_min'">
                   <span class="meta-item estimate-min">
-                    По минималке: {{ RESPAWN_WINDOW[boss.tier].fixed + ESTIMATE_MIN_EXTRA_HOURS }}ч
-                    <span class="dim">(осталось {{ fmtMs(countdownMs(boss)) }})</span>
+                    По мин.: {{ formatTime(lastKill(boss.id).killed_at) }}
+                  </span>
+                  <span class="meta-item estimate-min">
+                    Респавн: {{ RESPAWN_WINDOW[boss.tier].fixed + ESTIMATE_MIN_EXTRA_HOURS }}ч
+                    <span class="dim">(осталось {{ fmtMs(fixedLeft(boss)) }})</span>
                   </span>
                 </template>
 
-                <span v-else-if="statusOf(boss) === 'dead'" class="meta-item respawn-dead">
-                  Респавн: <b>пора проверять</b>
+                <span v-else class="meta-item alive">
+                  Реснулся: {{ formatTime(lastKill(boss.id).respawn_at) }}
                 </span>
               </div>
             </div>
@@ -324,10 +364,10 @@ onUnmounted(() => {
               <button class="kill-btn" @click="addKill(boss, false)" :disabled="loadingId === boss.id">
                 {{ loadingId === boss.id ? '…' : 'Убил' }}
               </button>
-              <button class="kill-btn min-btn" @click="addKill(boss, true)" :disabled="loadingId === boss.id" title="По минималке (фикс + 8ч)">
+              <button class="kill-btn min-btn" @click="addKill(boss, true)" :disabled="loadingId === boss.id">
                 По мин.
               </button>
-              <button class="kill-btn ghost-btn" @click="openManual(boss)" :disabled="loadingId === boss.id" title="Ввести время вручную">
+              <button class="kill-btn ghost-btn" @click="openManual(boss)" :disabled="loadingId === boss.id" title="Ввести время">
                 ⏱
               </button>
               <button
@@ -335,7 +375,7 @@ onUnmounted(() => {
                 class="kill-btn clear-btn"
                 @click="clearKill(boss)"
                 :disabled="loadingId === boss.id"
-                title="Очистить запись"
+                title="Очистить"
               >
                 ✕
               </button>
@@ -357,8 +397,6 @@ onUnmounted(() => {
   min-height: 100vh;
   box-sizing: border-box;
 }
-
-.login-hint { text-align: center; padding: 2rem; color: #6b7280; }
 
 .topbar {
   display: flex;
@@ -436,17 +474,16 @@ onUnmounted(() => {
   outline-offset: 1px;
 }
 
-/* Цвета статусов */
-.card.status-respawning     { background: #fde8e8; border-color: #f0b0b0; } /* красный */
-.card.status-respawn_window { background: #ffeddb; border-color: #f0bf85; } /* оранжевый */
-.card.status-estimate_min   { background: #fff8cc; border-color: #e6d47a; } /* жёлтый */
-.card.status-alive          { background: #e6f7ec; border-color: #a8dcb8; } /* зелёный */
+.card.status-respawning     { background: #fde8e8; border-color: #f0b0b0; }
+.card.status-respawn_window { background: #ffeddb; border-color: #f0bf85; }
+.card.status-estimate_min   { background: #fff8cc; border-color: #e6d47a; }
+.card.status-alive          { background: #e6f7ec; border-color: #a8dcb8; }
 
 .dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
-.dot-respawning     { background: #e04a4a; } /* красный */
-.dot-respawn_window { background: #e08a20; } /* оранжевый */
-.dot-estimate_min   { background: #d4b820; } /* жёлтый */
-.dot-alive          { background: #34c26a; } /* зелёный */
+.dot-respawning     { background: #e04a4a; }
+.dot-respawn_window { background: #e08a20; }
+.dot-estimate_min   { background: #d4b820; }
+.dot-alive          { background: #34c26a; }
 
 .card-main { flex: 1; min-width: 0; }
 
@@ -462,13 +499,38 @@ onUnmounted(() => {
 .lvl { font-size: 0.68rem; color: #6b7280; flex-shrink: 0; }
 
 .monitors {
-  font-size: 0.68rem;
+  font-size: 0.72rem;
   color: #5b8def;
   font-weight: 500;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  max-width: 120px;
+  max-width: 160px;
+  background: rgba(91, 141, 239, 0.08);
+  padding: 1px 6px 1px 4px;
+  border-radius: 10px;
+  cursor: default;
+  transition: background 0.15s;
+}
+.monitors:hover {
+  background: rgba(91, 141, 239, 0.15);
+}
+
+.monitors-icon {
+  font-size: 0.75rem;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+.monitors-names {
+  font-size: 0.68rem;
+  color: #3a6edb;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .meta {
