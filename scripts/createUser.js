@@ -13,16 +13,16 @@ if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
 
 const supabaseAdmin = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
 
-async function createUser(email, password) {
+async function createUser(email, password, username) {
   const { data, error } = await supabaseAdmin.auth.admin.createUser({
     email,
     password,
-    email_confirm: true, // подтверждаем email автоматически
+    email_confirm: true,
+    user_metadata: { username },
   })
   if (error) return console.error('Ошибка:', error.message)
-  console.log(`\n✅ Пользователь ${email} создан с паролем ${password}\n`)
-  console.log('ID:', data.user.id)
+  console.log(`\n✅ Пользователь ${email} создан с паролем ${password} и ником ${username}\n`)
 }
 
-// Замени email и пароль
-createUser('exi@gmail.com', 'exi123')
+// Замени email, пароль и ник
+createUser('exi1@gmail.com', 'exi123', 'Exi')
