@@ -59,7 +59,7 @@ async function toggleMonitor(boss) {
       username: username.value,
     })
   }
-  await fetchMonitors()
+  // Мониторы обновятся автоматически через подписку
 }
 
 function lastKill(bossId) {
@@ -211,12 +211,12 @@ async function addKill(boss, estimateMin = false) {
   if (error) {
     alert(error.message)
   } else {
-    await fetchKills()
+    // Удаляем мониторы у этого босса (сработает на всех)
     await supabase
       .from('boss_monitors')
       .delete()
       .eq('boss_id', boss.id)
-    await fetchMonitors()
+    // kill и мониторы обновятся через подписку
   }
 }
 
@@ -251,7 +251,7 @@ async function saveManual() {
   loadingId.value = null
   manualEdit.value = null
   if (error) alert(error.message)
-  else await fetchKills()
+  // kill обновится через подписку
 }
 
 async function clearKill(boss) {
@@ -265,8 +265,12 @@ async function clearKill(boss) {
   if (error) {
     alert(error.message)
   } else {
-    await fetchKills()
-    now.value = Date.now()
+    // Удаляем мониторы (на случай, если они остались)
+    await supabase
+      .from('boss_monitors')
+      .delete()
+      .eq('boss_id', boss.id)
+    // обновится через подписку
   }
 }
 
@@ -289,13 +293,33 @@ onMounted(async () => {
   if (user.value) {
     await fetchKills()
     await fetchMonitors()
+
+    const killChannel = supabase
+      .channel('boss_kills_changes')
+      .on('postgres_changes',
+        { event: '*', schema: 'public', table: 'boss_kills' },
+        () => fetchKills()
+      )
+      .subscribe()
+
+    const monitorChannel = supabase
+      .channel('boss_monitors_changes')
+      .on('postgres_changes',
+        { event: '*', schema: 'public', table: 'boss_monitors' },
+        () => fetchMonitors()
+      )
+      .subscribe()
+
+    onUnmounted(() => {
+      supabase.removeChannel(killChannel)
+      supabase.removeChannel(monitorChannel)
+      if (ticker) clearInterval(ticker)
+    })
   }
   ticker = setInterval(() => { now.value = Date.now() }, 1000)
 })
 
-onUnmounted(() => {
-  if (ticker) clearInterval(ticker)
-})
+// Убираем отдельный onUnmounted – теперь он внутри onMounted
 </script>
 
 <template>
