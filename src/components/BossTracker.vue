@@ -591,7 +591,7 @@ onMounted(async () => {
   gap: 1.25rem;
   align-items: start;
 }
-@media (max-width: 1100px) { .categories { grid-template-columns: 1fr; } }
+@media (max-width: 1300px) { .categories { grid-template-columns: 1fr; } }
 
 .category {
   background: #ffffff;
@@ -855,6 +855,52 @@ onMounted(async () => {
     align-items: stretch;
   }
 }
+
+@media (min-width: 1301px) and (max-width: 1799px) {
+  .card {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.3rem;
+    padding: 0.5rem;
+  }
+
+  .name-row {
+    flex-wrap: wrap;
+  }
+
+  .name {
+    font-size: 0.85rem;
+    white-space: normal;
+    overflow: visible;
+    text-overflow: clip;
+  }
+
+  .lvl {
+    font-size: 0.7rem;
+  }
+
+  .monitors-wrapper {
+    max-width: 100%;
+    justify-content: flex-start;
+  }
+
+  .actions {
+    justify-content: flex-start;
+    margin-top: 0.2rem;
+  }
+
+  .meta {
+    flex-direction: column;
+    gap: 0.2rem;
+  }
+
+  .manual-form {
+    flex-direction: column;
+    align-items: stretch;
+  }
+}
+
+
 
 /* Тестовая секция */
 .test-section {
