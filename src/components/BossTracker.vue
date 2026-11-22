@@ -250,8 +250,16 @@ async function saveManual() {
   })
   loadingId.value = null
   manualEdit.value = null
-  if (error) alert(error.message)
-  // kill обновится через подписку
+  if (error) {
+    alert(error.message)
+  } else {
+    // Удаляем всех мониторов этого босса
+    await supabase
+      .from('boss_monitors')
+      .delete()
+      .eq('boss_id', bossId)
+    // Данные обновятся через подписку (если есть Realtime)
+  }
 }
 
 async function clearKill(boss) {
