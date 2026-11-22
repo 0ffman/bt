@@ -246,120 +246,104 @@ onUnmounted(() => {
 
 <template>
   <div class="tracker">
-    <div v-if="!user" class="login-hint">
-      <p>Пожалуйста, войди через форму выше.</p>
-    </div>
+    <header class="topbar">
+      <span class="nick">Привет, <b>{{ username }}</b></span>
+      <button class="btn-ghost" @click="signOut">Выйти</button>
+    </header>
 
-    <template v-else>
-      <header class="topbar">
-        <span class="nick">Привет, <b>{{ username }}</b></span>
-        <button class="btn-ghost" @click="signOut">Выйти</button>
-      </header>
+    <div class="categories">
+      <section
+        v-for="col in [
+          { title: 'Low A', bosses: lowBosses },
+          { title: 'High A', bosses: highBosses },
+        ]"
+        :key="col.title"
+        class="category"
+      >
+        <h3 class="col-title">
+          {{ col.title }}
+          <span class="counter">{{ aliveCount(col.bosses) }}/{{ col.bosses.length }} живых</span>
+        </h3>
 
-      <div class="categories">
-        <section
-          v-for="col in [
-            { title: 'Low A', bosses: lowBosses },
-            { title: 'High A', bosses: highBosses },
-          ]"
-          :key="col.title"
-          class="category"
-        >
-          <h3 class="col-title">
-            {{ col.title }}
-            <span class="counter">{{ aliveCount(col.bosses) }}/{{ col.bosses.length }} живых</span>
-          </h3>
+        <div class="cards-grid">
+          <div
+            v-for="boss in col.bosses"
+            :key="boss.id"
+            class="card"
+            :class="[`status-${statusOf(boss)}`, { 'is-monitored': isMonitoring(boss.id) }]"
+            @click="toggleMonitor(boss)"
+            :title="isMonitoring(boss.id) ? 'Перестать мониторить' : 'Мониторить'"
+          >
+            <span class="dot" :class="`dot-${statusOf(boss)}`" />
 
-          <div class="cards-grid">
-            <div
-              v-for="boss in col.bosses"
-              :key="boss.id"
-              class="card"
-              :class="[`status-${statusOf(boss)}`, { 'is-monitored': isMonitoring(boss.id) }]"
-              @click="toggleMonitor(boss)"
-              :title="isMonitoring(boss.id) ? 'Перестать мониторить' : 'Мониторить'"
-            >
-              <span class="dot" :class="`dot-${statusOf(boss)}`" />
-
-              <div class="card-main">
-                <div class="name-row">
-                  <span class="name">{{ boss.name }}</span>
-                  <span class="lvl">Lv.{{ boss.level }}</span>
-                  <span v-if="monitorsFor(boss.id).length" class="monitors">
-                    👁 {{ monitorsFor(boss.id).map(m => m.username).join(', ') }}
-                  </span>
-                </div>
-
-                <div v-if="manualEdit && manualEdit.bossId === boss.id" class="manual-form" @click.stop>
-                  <input type="datetime-local" v-model="manualEdit.value" class="manual-input" />
-                  <button class="kill-btn" @click.stop="saveManual" :disabled="loadingId === boss.id">
-                    Сохранить
-                  </button>
-                  <button class="btn-ghost small" @click.stop="cancelManual">Отмена</button>
-                </div>
-
-                <div v-else-if="lastKill(boss.id)" class="meta">
-                  <template v-if="statusOf(boss) === 'respawning'">
-                    <span class="meta-item respawn">
-                      Убит: {{ formatTime(lastKill(boss.id).killed_at) }}
-                    </span>
-                    <span class="meta-item respawn">
-                      Фикс: {{ RESPAWN_WINDOW[boss.tier].fixed }}ч
-                      <span class="dim">(осталось {{ fmtMs(fixedLeft(boss)) }})</span>
-                    </span>
-                  </template>
-
-                  <template v-else-if="statusOf(boss) === 'respawn_window'">
-                    <span class="meta-item respawn-window">
-                      Убит: {{ formatTime(lastKill(boss.id).killed_at) }}
-                    </span>
-                    <span class="meta-item respawn-window">
-                      Окно респавна: {{ RESPAWN_WINDOW[boss.tier].randomMax }}ч
-                      <span class="dim">(осталось {{ fmtMs(randomLeft(boss)) }})</span>
-                    </span>
-                  </template>
-
-                  <template v-else-if="statusOf(boss) === 'estimate_min'">
-                    <span class="meta-item estimate-min">
-                      Убит по мин.: {{ formatTime(lastKill(boss.id).killed_at) }}
-                    </span>
-                    <span class="meta-item estimate-min">
-                      Респавн: {{ RESPAWN_WINDOW[boss.tier].fixed + ESTIMATE_MIN_EXTRA_HOURS }}ч
-                      <span class="dim">(осталось {{ fmtMs(fixedLeft(boss)) }})</span>
-                    </span>
-                  </template>
-
-                  <span v-else-if="statusOf(boss) === 'alive'" class="meta-item alive">
-                    Реснулся в {{ formatTime(lastKill(boss.id).respawn_at) }}
-                  </span>
-                </div>
+            <div class="card-main">
+              <div class="name-row">
+                <span class="name">{{ boss.name }}</span>
+                <span class="lvl">Lv.{{ boss.level }}</span>
+                <span v-if="monitorsFor(boss.id).length" class="monitors">
+                  👁 {{ monitorsFor(boss.id).map(m => m.username).join(', ') }}
+                </span>
               </div>
 
-              <div v-if="!manualEdit || manualEdit.bossId !== boss.id" class="actions" @click.stop>
-                <button class="kill-btn" @click="addKill(boss, false)" :disabled="loadingId === boss.id">
-                  {{ loadingId === boss.id ? '…' : 'Убил' }}
+              <div v-if="manualEdit && manualEdit.bossId === boss.id" class="manual-form" @click.stop>
+                <input type="datetime-local" v-model="manualEdit.value" class="manual-input" />
+                <button class="kill-btn" @click.stop="saveManual" :disabled="loadingId === boss.id">
+                  Сохранить
                 </button>
-                <button class="kill-btn min-btn" @click="addKill(boss, true)" :disabled="loadingId === boss.id" title="Время убийства = начало окна респавна">
-                  По мин.
-                </button>
-                <button class="kill-btn ghost-btn" @click="openManual(boss)" :disabled="loadingId === boss.id" title="Ввести время вручную">
-                  ⏱
-                </button>
-                <button
-                  v-if="lastKill(boss.id)"
-                  class="kill-btn clear-btn"
-                  @click="clearKill(boss)"
-                  :disabled="loadingId === boss.id"
-                  title="Очистить запись"
-                >
-                  ✕
-                </button>
+                <button class="btn-ghost small" @click.stop="cancelManual">Отмена</button>
+              </div>
+
+              <div v-else-if="lastKill(boss.id)" class="meta">
+                <span class="meta-item">Убит: {{ formatTime(lastKill(boss.id).killed_at) }}</span>
+
+                <template v-if="statusOf(boss) === 'respawning'">
+                  <span v-if="fixedLeft(boss) > 0" class="meta-item respawn">
+                    Респавн: {{ RESPAWN_WINDOW[boss.tier].fixed }}ч
+                    <span class="dim">(осталось {{ fmtMs(countdownMs(boss)) }})</span>
+                  </span>
+                  <span v-else class="meta-item respawn">
+                    Респавн: {{ RESPAWN_WINDOW[boss.tier].fixed }}ч
+                    <span class="dim">(+{{ fmtMs(randomLeft(boss)) }})</span>
+                  </span>
+                </template>
+
+                <template v-else-if="statusOf(boss) === 'estimate_min'">
+                  <span class="meta-item estimate-min">
+                    По минималке: {{ RESPAWN_WINDOW[boss.tier].fixed + ESTIMATE_MIN_EXTRA_HOURS }}ч
+                    <span class="dim">(осталось {{ fmtMs(countdownMs(boss)) }})</span>
+                  </span>
+                </template>
+
+                <span v-else-if="statusOf(boss) === 'dead'" class="meta-item respawn-dead">
+                  Респавн: <b>пора проверять</b>
+                </span>
               </div>
             </div>
+
+            <div v-if="!manualEdit || manualEdit.bossId !== boss.id" class="actions" @click.stop>
+              <button class="kill-btn" @click="addKill(boss, false)" :disabled="loadingId === boss.id">
+                {{ loadingId === boss.id ? '…' : 'Убил' }}
+              </button>
+              <button class="kill-btn min-btn" @click="addKill(boss, true)" :disabled="loadingId === boss.id" title="По минималке (фикс + 8ч)">
+                По мин.
+              </button>
+              <button class="kill-btn ghost-btn" @click="openManual(boss)" :disabled="loadingId === boss.id" title="Ввести время вручную">
+                ⏱
+              </button>
+              <button
+                v-if="lastKill(boss.id)"
+                class="kill-btn clear-btn"
+                @click="clearKill(boss)"
+                :disabled="loadingId === boss.id"
+                title="Очистить запись"
+              >
+                ✕
+              </button>
+            </div>
           </div>
-        </section>
-      </div>
-    </template>
+        </div>
+      </section>
+    </div>
   </div>
 </template>
 
