@@ -6,53 +6,84 @@ import BossTracker from './components/BossTracker.vue'
 
 const session = ref(null)
 const needsUsername = ref(false)
+const inviteMode = ref(false)
+const email = ref('')
+const password = ref('')
+const loading = ref(false)
+const errorMsg = ref('')
 
-async function handleAuth() {
-  // Проверяем hash-параметры (если пришли с инвайт-ссылки)
-  const hashParams = new URLSearchParams(window.location.hash.substring(1))
-  const accessToken = hashParams.get('access_token')
-  const refreshToken = hashParams.get('refresh_token')
-  
-  if (accessToken) {
-    console.log('Найден access_token в URL — восстанавливаем сессию')
-    const { data, error } = await supabase.auth.setSession({
-      access_token: accessToken,
-      refresh_token: refreshToken || '',
-    })
-    if (error) {
-      console.error('Ошибка восстановления сессии:', error)
-    } else {
-      session.value = data.session
-      needsUsername.value = data.session && !data.session.user.user_metadata?.username
-      // Очищаем hash из URL
-      window.history.replaceState(null, '', window.location.pathname)
-      return
-    }
+async function signIn() {
+  if (!email.value.trim() || !password.value.trim()) {
+    errorMsg.value = 'Введите email и пароль'
+    return
   }
+  loading.value = true
+  errorMsg.value = ''
   
-  // Если нет hash — просто получаем текущую сессию
-  const { data } = await supabase.auth.getSession()
-  session.value = data.session
-  needsUsername.value = data.session && !data.session.user.user_metadata?.username
+  const { data, error } = await supabase.auth.signInWithPassword({
+    email: email.value.trim(),
+    password: password.value.trim(),
+  })
+  
+  loading.value = false
+  if (error) {
+    errorMsg.value = error.message
+  } else {
+    session.value = data.session
+    needsUsername.value = !data.session.user.user_metadata?.username
+  }
+}
+
+function toggleMode() {
+  inviteMode.value = !inviteMode.value
+  errorMsg.value = ''
 }
 
 onMounted(async () => {
-  await handleAuth()
-  
-  const { data: authData } = supabase.auth.onAuthStateChange((_event, newSession) => {
+  const { data: { session: currentSession } } = await supabase.auth.getSession()
+  session.value = currentSession
+  needsUsername.value = currentSession && !currentSession.user.user_metadata?.username
+
+  const { data: authListener } = supabase.auth.onAuthStateChange((event, newSession) => {
     session.value = newSession
     needsUsername.value = newSession && !newSession.user.user_metadata?.username
   })
 
-  onUnmounted(() => authData.subscription.unsubscribe())
+  onUnmounted(() => authListener.subscription.unsubscribe())
 })
 </script>
 
 <template>
   <div>
-    <div v-if="!session" style="max-width: 500px; margin: 4rem auto; padding: 1rem; text-align: center; color: #6b7280;">
-      <h2>Доступ только по приглашению</h2>
-      <p>Если у тебя есть инвайт-ссылка — перейди по ней. Если нет — попроси у администратора.</p>
+    <div v-if="!session" style="max-width: 400px; margin: 4rem auto; padding: 1.5rem; background: #f4f5f7; border: 1px solid #d3d7de; border-radius: 12px; text-align: center;">
+      <h2 style="margin-top: 0;">Вход</h2>
+      
+      <div v-if="errorMsg" style="color: #e04a4a; margin-bottom: 1rem; font-size: 0.85rem;">
+        {{ errorMsg }}
+      </div>
+      
+      <input 
+        v-model="email" 
+        placeholder="Email" 
+        style="width: 100%; padding: 0.6rem; margin-bottom: 0.5rem; border: 1px solid #ccc; border-radius: 6px; box-sizing: border-box;" 
+      />
+      <input 
+        v-model="password" 
+        type="password" 
+        placeholder="Пароль" 
+        style="width: 100%; padding: 0.6rem; margin-bottom: 0.5rem; border: 1px solid #ccc; border-radius: 6px; box-sizing: border-box;" 
+      />
+      <button 
+        @click="signIn" 
+        :disabled="loading"
+        style="width: 100%; padding: 0.6rem; background: #5b8def; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 1rem;"
+      >
+        {{ loading ? 'Вход...' : 'Войти' }}
+      </button>
+      
+      <p style="margin-top: 1rem; font-size: 0.85rem; color: #6b7280;">
+        Получите email и пароль у администратора.
+      </p>
     </div>
     <SetUsername v-else-if="needsUsername" />
     <BossTracker v-else />

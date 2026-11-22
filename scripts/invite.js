@@ -25,4 +25,4 @@ async function generateInvite(email) {
   console.log('\n✅ Ссылка:\n' + data.properties.action_link + '\n')
 }
 
-generateInvite('bosslocal1@gmail.com')
+generateInvite('boss55@gmail.com')

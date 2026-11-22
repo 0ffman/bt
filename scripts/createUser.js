@@ -1,0 +1,28 @@
+import { createClient } from '@supabase/supabase-js'
+import { config } from 'dotenv'
+
+config({ path: '.env.local' })
+
+const SUPABASE_URL = process.env.SUPABASE_URL
+const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY
+
+if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
+  console.error('Задай SUPABASE_URL и SUPABASE_SERVICE_ROLE_KEY в .env.local')
+  process.exit(1)
+}
+
+const supabaseAdmin = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
+
+async function createUser(email, password) {
+  const { data, error } = await supabaseAdmin.auth.admin.createUser({
+    email,
+    password,
+    email_confirm: true, // подтверждаем email автоматически
+  })
+  if (error) return console.error('Ошибка:', error.message)
+  console.log(`\n✅ Пользователь ${email} создан с паролем ${password}\n`)
+  console.log('ID:', data.user.id)
+}
+
+// Замени email и пароль
+createUser('exi@gmail.com', 'exi123')
