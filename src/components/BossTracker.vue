@@ -150,7 +150,7 @@ function fmtMs(ms) {
   return `${h}ч ${String(m).padStart(2, '0')}м ${String(s).padStart(2, '0')}с`
 }
 
-const STATUS_ORDER = { respawning: 0, respawn_window: 1, estimate_min: 2, alive: 3 }
+const STATUS_ORDER = { alive: 0, respawning: 1, respawn_window: 2, estimate_min: 3 }
 
 function sortBosses(list) {
   return [...list].sort((a, b) => {
@@ -333,10 +333,6 @@ onUnmounted(() => {
               <div class="name-row">
                 <span class="name">{{ boss.name }}</span>
                 <span class="lvl">Lv.{{ boss.level }}</span>
-                <div v-if="monitorsFor(boss.id).length" class="monitors-wrapper">
-                  <span class="monitors-icon">👁</span>
-                  <span class="monitors-list">{{ monitorsFor(boss.id).map(m => m.username).join(', ') }}</span>
-                </div>
               </div>
 
               <div v-if="manualEdit && manualEdit.bossId === boss.id" class="manual-form" @click.stop>
@@ -383,6 +379,10 @@ onUnmounted(() => {
             </div>
 
             <div v-if="!manualEdit || manualEdit.bossId !== boss.id" class="actions" @click.stop>
+              <div v-if="monitorsFor(boss.id).length" class="monitors-wrapper">
+                <span class="monitors-icon">👁</span>
+                <span class="monitors-list">{{ monitorsFor(boss.id).map(m => m.username).join(', ') }}</span>
+              </div>
               <button
                 class="kill-btn"
                 @click="addKill(boss, false)"
@@ -428,10 +428,6 @@ onUnmounted(() => {
             <div class="name-row">
               <span class="name">{{ boss.name }}</span>
               <span class="lvl">Lv.{{ boss.level }}</span>
-              <div v-if="monitorsFor(boss.id).length" class="monitors-wrapper">
-                <span class="monitors-icon">👁</span>
-                <span class="monitors-list">{{ monitorsFor(boss.id).map(m => m.username).join(', ') }}</span>
-              </div>
             </div>
 
             <div v-if="manualEdit && manualEdit.bossId === boss.id" class="manual-form" @click.stop>
@@ -478,6 +474,10 @@ onUnmounted(() => {
           </div>
 
           <div v-if="!manualEdit || manualEdit.bossId !== boss.id" class="actions" @click.stop>
+            <div v-if="monitorsFor(boss.id).length" class="monitors-wrapper">
+              <span class="monitors-icon">👁</span>
+              <span class="monitors-list">{{ monitorsFor(boss.id).map(m => m.username).join(', ') }}</span>
+            </div>
             <button
               class="kill-btn"
               @click="addKill(boss, false)"
@@ -611,9 +611,7 @@ onUnmounted(() => {
 .name {
   font-weight: 600;
   font-size: 0.8rem;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  word-break: break-word;
   color: #1f2328;
 }
 .lvl { font-size: 0.68rem; color: #6b7280; flex-shrink: 0; }
@@ -685,7 +683,14 @@ onUnmounted(() => {
   color: #2a2d34;
 }
 
-.actions { display: flex; gap: 0.25rem; flex-shrink: 0; flex-wrap: wrap; justify-content: flex-end; }
+.actions {
+  display: flex;
+  gap: 0.25rem;
+  flex-shrink: 0;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  align-items: center;
+}
 
 .kill-btn {
   background: #5b8def;
@@ -718,6 +723,51 @@ onUnmounted(() => {
   border: 1px solid #f0b0b0;
 }
 .clear-btn:hover:not(:disabled) { background: #fbd6d6; }
+
+@media (max-width: 400px) {
+  .card {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.3rem;
+    padding: 0.5rem;
+  }
+
+  .name-row {
+    flex-wrap: wrap;
+  }
+
+  .name {
+    font-size: 0.85rem;
+    white-space: normal;
+    overflow: visible;
+    text-overflow: clip;
+  }
+
+  .lvl {
+    font-size: 0.75rem;
+  }
+
+  .monitors-wrapper {
+    max-width: 100%;
+    width: 100%;
+    justify-content: flex-start;
+  }
+
+  .actions {
+    justify-content: flex-start;
+    margin-top: 0.2rem;
+  }
+
+  .meta {
+    flex-direction: column;
+    gap: 0.2rem;
+  }
+
+  .manual-form {
+    flex-direction: column;
+    align-items: stretch;
+  }
+}
 
 /* Тестовая секция */
 .test-section {
