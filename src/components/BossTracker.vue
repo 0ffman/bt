@@ -324,14 +324,10 @@ onUnmounted(() => {
               <div class="name-row">
                 <span class="name">{{ boss.name }}</span>
                 <span class="lvl">Lv.{{ boss.level }}</span>
-                <span
-                  v-if="monitorsFor(boss.id).length"
-                  class="monitors"
-                  :title="monitorsFor(boss.id).map(m => m.username).join(', ')"
-                >
+                <div v-if="monitorsFor(boss.id).length" class="monitors-wrapper">
                   <span class="monitors-icon">👁</span>
-                  <span class="monitors-names">{{ monitorsFor(boss.id).map(m => m.username).join(', ') }}</span>
-                </span>
+                  <span class="monitors-list">{{ monitorsFor(boss.id).map(m => m.username).join(', ') }}</span>
+                </div>
               </div>
 
               <div v-if="manualEdit && manualEdit.bossId === boss.id" class="manual-form" @click.stop>
@@ -423,14 +419,10 @@ onUnmounted(() => {
             <div class="name-row">
               <span class="name">{{ boss.name }}</span>
               <span class="lvl">Lv.{{ boss.level }}</span>
-              <span
-                v-if="monitorsFor(boss.id).length"
-                class="monitors"
-                :title="monitorsFor(boss.id).map(m => m.username).join(', ')"
-              >
+              <div v-if="monitorsFor(boss.id).length" class="monitors-wrapper">
                 <span class="monitors-icon">👁</span>
-                <span class="monitors-names">{{ monitorsFor(boss.id).map(m => m.username).join(', ') }}</span>
-              </span>
+                <span class="monitors-list">{{ monitorsFor(boss.id).map(m => m.username).join(', ') }}</span>
+              </div>
             </div>
 
             <div v-if="manualEdit && manualEdit.bossId === boss.id" class="manual-form" @click.stop>
@@ -617,36 +609,37 @@ onUnmounted(() => {
 }
 .lvl { font-size: 0.68rem; color: #6b7280; flex-shrink: 0; }
 
-.monitors {
-  font-size: 0.72rem;
+.monitors-wrapper {
+  font-size: 0.75rem;
   color: #5b8def;
-  font-weight: 500;
+  font-weight: 600;
   display: inline-flex;
   align-items: center;
-  gap: 3px;
+  gap: 4px;
+  background: rgba(91, 141, 239, 0.12);
+  padding: 2px 8px 2px 6px;
+  border-radius: 12px;
+  cursor: default;
+  transition: background 0.15s;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  max-width: 160px;
-  background: rgba(91, 141, 239, 0.08);
-  padding: 1px 6px 1px 4px;
-  border-radius: 10px;
-  cursor: default;
-  transition: background 0.15s;
+  max-width: 200px;
+  flex-shrink: 0;
 }
-.monitors:hover {
-  background: rgba(91, 141, 239, 0.15);
+.monitors-wrapper:hover {
+  background: rgba(91, 141, 239, 0.2);
 }
 
 .monitors-icon {
-  font-size: 0.75rem;
+  font-size: 1rem;
   line-height: 1;
   flex-shrink: 0;
 }
 
-.monitors-names {
-  font-size: 0.68rem;
-  color: #3a6edb;
+.monitors-list {
+  font-size: 0.78rem;
+  color: #2b5ed9;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
