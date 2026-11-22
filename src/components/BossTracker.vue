@@ -171,8 +171,12 @@ function aliveCount(list) {
 
 async function addKill(boss, estimateMin = false) {
   if (!user.value) return
-  if (!estimateMin && statusOf(boss) === 'respawning') {
+  if (statusOf(boss) === 'respawning') {
     alert('Босс ещё не реснулся!')
+    return
+  }
+  if (estimateMin && statusOf(boss) === 'estimate_min') {
+    alert('Босс уже в режиме «По мин.»')
     return
   }
   loadingId.value = boss.id
@@ -208,7 +212,6 @@ async function addKill(boss, estimateMin = false) {
     alert(error.message)
   } else {
     await fetchKills()
-    // Снимаем мониторинг у всех, кто отслеживал этого босса
     await supabase
       .from('boss_monitors')
       .delete()
@@ -252,14 +255,12 @@ async function saveManual() {
 }
 
 async function clearKill(boss) {
-  const last = lastKill(boss.id)
-  if (!last) return
-  if (!confirm(`Удалить запись убийства «${boss.name}»?`)) return
+  if (!confirm(`Удалить все записи убийства «${boss.name}»?`)) return
   loadingId.value = boss.id
   const { error } = await supabase
     .from('boss_kills')
     .delete()
-    .eq('id', last.id)
+    .eq('boss_name', boss.id)
   loadingId.value = null
   if (error) {
     alert(error.message)
@@ -390,7 +391,11 @@ onUnmounted(() => {
               >
                 {{ loadingId === boss.id ? '…' : 'Убил' }}
               </button>
-              <button class="kill-btn min-btn" @click="addKill(boss, true)" :disabled="loadingId === boss.id">
+              <button
+                class="kill-btn min-btn"
+                @click="addKill(boss, true)"
+                :disabled="loadingId === boss.id || statusOf(boss) === 'respawning' || statusOf(boss) === 'estimate_min'"
+              >
                 По мин.
               </button>
               <button class="kill-btn ghost-btn" @click="openManual(boss)" :disabled="loadingId === boss.id" title="Ввести время">
@@ -485,7 +490,11 @@ onUnmounted(() => {
             >
               {{ loadingId === boss.id ? '…' : 'Убил' }}
             </button>
-            <button class="kill-btn min-btn" @click="addKill(boss, true)" :disabled="loadingId === boss.id">
+            <button
+              class="kill-btn min-btn"
+              @click="addKill(boss, true)"
+              :disabled="loadingId === boss.id || statusOf(boss) === 'respawning' || statusOf(boss) === 'estimate_min'"
+            >
               По мин.
             </button>
             <button class="kill-btn ghost-btn" @click="openManual(boss)" :disabled="loadingId === boss.id" title="Ввести время">

@@ -55,8 +55,8 @@ export const RESPAWN_WINDOW = {
 
 // «По минималке»: фикс + 8ч (разброс 4+4)
 export function getEstimateMinExtraHours(tier) {
-  if (tier.startsWith('test_')) return 2 / 60 // 2 минуты (в часах)
-  return 8 // hours для обычных боссов
+  if (tier.startsWith('test_')) return 30 / 60 // 30 минут для тестов
+  return 8 // часов для обычных боссов
 }
 
 export function fixedRespawnMs(tier) {
