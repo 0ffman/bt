@@ -37,7 +37,7 @@ export const BOSSES = [
   { id: 'kandra', name: 'Vanor Chief Kandra', level: 73, tier: 'high' },
   { id: 'hallate', name: 'Death Lord Hallate', level: 73, tier: 'high' },
   { id: 'flamestone', name: 'Flamestone Giant', level: 74, tier: 'high' },
-  { id: 'cloe', name: 'Antharas Priest Cloe', level: 74, tier: 'high' },
+  { id: 'cloe', name: 'Antharas Priest Cloe', level: 73, tier: 'high' },
   { id: 'sobekk', name: 'Krokian Padisha Sobekk', level: 74, tier: 'high' },
 
   { id: 'test_low', name: 'TEST Low (1м + 30с)', level: 1, tier: 'test_low' },
