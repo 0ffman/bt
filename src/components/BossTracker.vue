@@ -1,12 +1,11 @@
 <script setup>
 import { useBossTracker } from '../composables/useBossTracker'
-import { RESPAWN_WINDOW, getEstimateMinExtraHours } from '../bosses'
 
 const {
   user, username, isDark, toggleTheme,
-  monitorsFor, isMonitoring, toggleMonitor, lastKill, statusOf,
-  countdownMs, fixedLeft, randomLeft, fmtHours, fmtMs,
-  lowBosses, highBosses, testBosses, aliveCount,
+  monitorsFor, isMonitoring, toggleMonitor, removeMonitor, lastKill, statusOf,
+  fixedLeft, randomLeft, fmtHours, fmtMs,
+  testBosses, allBosses,
   loadingId, manualEdit,
   addKill, openManual, cancelManual, saveManual, clearKill,
   formatTime, signOut,
@@ -29,219 +28,206 @@ const {
       <button class="btn-ghost" @click="signOut">Выйти</button>
     </header>
 
-    <div class="categories">
-      <section
-        v-for="col in [
-          { title: 'Low A', bosses: lowBosses },
-          { title: 'High A', bosses: highBosses },
-        ]"
-        :key="col.title"
-        class="category"
-      >
-        <h3 class="col-title">
-          {{ col.title }}
-          <span class="counter">{{ aliveCount(col.bosses) }}/{{ col.bosses.length }} живых</span>
-        </h3>
-
-        <div class="cards-grid">
-          <div
-            v-for="boss in col.bosses"
-            :key="boss.id"
-            class="card"
-            :class="[`status-${statusOf(boss)}`, { 'is-monitored': isMonitoring(boss.id) }]"
-            @click="toggleMonitor(boss)"
-            :title="isMonitoring(boss.id) ? 'Перестать мониторить' : 'Мониторить'"
-          >
-            <span class="dot" :class="`dot-${statusOf(boss)}`" />
-
-            <div class="card-main">
-              <div class="name-row">
-                <span class="name">{{ boss.name }}</span>
-                <span class="lvl">Lv.{{ boss.level }}</span>
+    <table class="boss-table">
+      <thead>
+        <tr>
+          <th class="th-name">Имя</th>
+          <th class="th-level">Ур.</th>
+          <th class="th-status">Время</th>
+          <th class="th-killedby">Кем убит</th>
+          <th class="th-eta">ETA</th>
+          <th class="th-follow">Отслеживать</th>
+          <th class="th-watchers">Кто смотрит</th>
+          <th class="th-actions">Действия</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr
+          v-for="boss in allBosses"
+          :key="boss.id"
+          class="boss-row"
+          :class="`status-${statusOf(boss)}`"
+        >
+          <td class="td-name"><span class="name">{{ boss.name }}</span></td>
+          <td class="td-level"><span class="lvl">{{ boss.level }}</span></td>
+          <td class="td-status">
+            <div v-if="lastKill(boss.id)" class="meta">
+              <template v-if="statusOf(boss) === 'respawning'">
+                <span class="meta-item respawn">Убит: {{ formatTime(lastKill(boss.id).killed_at) }}</span>
+              </template>
+              <template v-else-if="statusOf(boss) === 'respawn_window'">
+                <span class="meta-item respawn-window">Убит: {{ formatTime(lastKill(boss.id).killed_at) }}</span>
+              </template>
+              <template v-else-if="statusOf(boss) === 'estimate_min'">
+                <span class="meta-item estimate-min">По мин.: {{ formatTime(lastKill(boss.id).killed_at) }}</span>
+              </template>
+              <span v-else class="meta-item alive">Реснулся: {{ formatTime(lastKill(boss.id).respawn_at) }}</span>
+            </div>
+          </td>
+          <td class="td-killedby">
+            <span v-if="lastKill(boss.id) && lastKill(boss.id).killed_by_username" class="killer-name">
+              {{ lastKill(boss.id).killed_by_username }}
+            </span>
+            <span v-else class="no-killer">—</span>
+          </td>
+          <td class="td-eta">
+            <template v-if="statusOf(boss) === 'respawning'">
+              <span class="dim">{{ fmtMs(fixedLeft(boss)) }}</span>
+            </template>
+            <template v-else-if="statusOf(boss) === 'respawn_window'">
+              <span class="dim">{{ fmtMs(randomLeft(boss)) }}</span>
+            </template>
+            <template v-else-if="statusOf(boss) === 'estimate_min'">
+              <span class="dim">{{ fmtMs(fixedLeft(boss)) }}</span>
+            </template>
+            <template v-else>—</template>
+          </td>
+          <td class="td-follow">
+            <button
+              v-if="statusOf(boss) !== 'respawning'"
+              class="follow-btn"
+              :class="{ following: isMonitoring(boss.id) }"
+              @click.stop="toggleMonitor(boss)"
+            >
+              {{ isMonitoring(boss.id) ? '✓' : '+' }}
+            </button>
+          </td>
+          <td class="td-watchers">
+            <div v-if="monitorsFor(boss.id).length" class="watchers-list">
+              <span v-for="m in monitorsFor(boss.id)" :key="m.user_id" class="watcher-item">
+                <span class="watcher-name">{{ m.username }}</span>
+                <button
+                  class="watcher-remove"
+                  @click.stop="removeMonitor(boss.id, m.user_id)"
+                  title="Убрать наблюдателя"
+                >✕</button>
+              </span>
+            </div>
+            <span v-else class="no-watchers">—</span>
+          </td>
+          <td class="td-actions">
+            <div class="actions-wrapper">
+              <div v-if="!manualEdit || manualEdit.bossId !== boss.id" class="actions" @click.stop>
+                <button class="kill-btn kill-main" @click="addKill(boss, false)" :disabled="loadingId === boss.id || statusOf(boss) === 'respawning'">
+                  {{ loadingId === boss.id ? '…' : 'Убил' }}
+                </button>
+                <button class="kill-btn kill-min" @click="addKill(boss, true)" :disabled="loadingId === boss.id || statusOf(boss) === 'respawning' || statusOf(boss) === 'estimate_min'">
+                  <span class="btn-icon-min">⏱️</span>
+                  <span>min</span>
+                </button>
+                <button class="kill-btn ghost-btn" @click="openManual(boss)" :disabled="loadingId === boss.id" title="Ввести время">⏱</button>
+                <button v-if="lastKill(boss.id)" class="kill-btn clear-btn" @click="clearKill(boss)" :disabled="loadingId === boss.id" title="Очистить">✕</button>
               </div>
-
-              <div v-if="manualEdit && manualEdit.bossId === boss.id" class="manual-form" @click.stop>
+              <div v-else class="manual-form" @click.stop>
                 <input type="datetime-local" v-model="manualEdit.value" class="manual-input" />
                 <button class="kill-btn" @click.stop="saveManual" :disabled="loadingId === boss.id">Сохранить</button>
                 <button class="btn-ghost small" @click.stop="cancelManual">Отмена</button>
               </div>
-
-              <div v-else-if="lastKill(boss.id)" class="meta">
-                <template v-if="statusOf(boss) === 'respawning'">
-                  <span class="meta-item respawn">
-                    Убит: {{ formatTime(lastKill(boss.id).killed_at) }}
-                  </span>
-                  <span class="meta-item respawn">
-                    Фикс: {{ fmtHours(RESPAWN_WINDOW[boss.tier].fixed) }}
-                    <span class="dim">(осталось {{ fmtMs(fixedLeft(boss)) }})</span>
-                  </span>
-                </template>
-
-                <template v-else-if="statusOf(boss) === 'respawn_window'">
-                  <span class="meta-item respawn-window">
-                    Убит: {{ formatTime(lastKill(boss.id).killed_at) }}
-                  </span>
-                  <span class="meta-item respawn-window">
-                    Окно: {{ fmtHours(RESPAWN_WINDOW[boss.tier].randomMax) }}
-                    <span class="dim">(осталось {{ fmtMs(randomLeft(boss)) }})</span>
-                  </span>
-                </template>
-
-                <template v-else-if="statusOf(boss) === 'estimate_min'">
-                  <span class="meta-item estimate-min">
-                    По мин.: {{ formatTime(lastKill(boss.id).killed_at) }}
-                  </span>
-                  <span class="meta-item estimate-min">
-                    Респавн: {{ fmtHours(RESPAWN_WINDOW[boss.tier].fixed + getEstimateMinExtraHours(boss.tier)) }}
-                    <span class="dim">(осталось {{ fmtMs(fixedLeft(boss)) }})</span>
-                  </span>
-                </template>
-
-                <span v-else class="meta-item alive">
-                  Реснулся: {{ formatTime(lastKill(boss.id).respawn_at) }}
-                </span>
-              </div>
             </div>
-
-            <div v-if="!manualEdit || manualEdit.bossId !== boss.id" class="actions" @click.stop>
-              <div v-if="monitorsFor(boss.id).length" class="monitors-wrapper">
-                <span class="monitors-icon">👁</span>
-                <span class="monitors-list">{{ monitorsFor(boss.id).map(m => m.username).join(', ') }}</span>
-              </div>
-              <button
-                class="kill-btn"
-                @click="addKill(boss, false)"
-                :disabled="loadingId === boss.id || statusOf(boss) === 'respawning'"
-              >
-                {{ loadingId === boss.id ? '…' : 'Убил' }}
-              </button>
-              <button
-                class="kill-btn min-btn"
-                @click="addKill(boss, true)"
-                :disabled="loadingId === boss.id || statusOf(boss) === 'respawning' || statusOf(boss) === 'estimate_min'"
-              >
-                По мин.
-              </button>
-              <button class="kill-btn ghost-btn" @click="openManual(boss)" :disabled="loadingId === boss.id" title="Ввести время">
-                ⏱
-              </button>
-              <button
-                v-if="lastKill(boss.id)"
-                class="kill-btn clear-btn"
-                @click="clearKill(boss)"
-                :disabled="loadingId === boss.id"
-                title="Очистить"
-              >
-                ✕
-              </button>
-            </div>
-          </div>
-        </div>
-      </section>
-    </div>
+          </td>
+        </tr>
+      </tbody>
+    </table>
 
     <section v-if="testBosses.length" class="test-section">
       <h3 class="test-title">TEST</h3>
-      <div class="cards-grid">
-        <div
-          v-for="boss in testBosses"
-          :key="boss.id"
-          class="card"
-          :class="[`status-${statusOf(boss)}`, { 'is-monitored': isMonitoring(boss.id) }]"
-          @click="toggleMonitor(boss)"
-          :title="isMonitoring(boss.id) ? 'Перестать мониторить' : 'Мониторить'"
-        >
-          <span class="dot" :class="`dot-${statusOf(boss)}`" />
-
-          <div class="card-main">
-            <div class="name-row">
-              <span class="name">{{ boss.name }}</span>
-              <span class="lvl">Lv.{{ boss.level }}</span>
-            </div>
-
-            <div v-if="manualEdit && manualEdit.bossId === boss.id" class="manual-form" @click.stop>
-              <input type="datetime-local" v-model="manualEdit.value" class="manual-input" />
-              <button class="kill-btn" @click.stop="saveManual" :disabled="loadingId === boss.id">Сохранить</button>
-              <button class="btn-ghost small" @click.stop="cancelManual">Отмена</button>
-            </div>
-
-            <div v-else-if="lastKill(boss.id)" class="meta">
-              <template v-if="statusOf(boss) === 'respawning'">
-                <span class="meta-item respawn">
-                  Убит: {{ formatTime(lastKill(boss.id).killed_at) }}
-                </span>
-                <span class="meta-item respawn">
-                  Фикс: {{ fmtHours(RESPAWN_WINDOW[boss.tier]?.fixed ?? 10) }}
-                  <span class="dim">(осталось {{ fmtMs(fixedLeft(boss)) }})</span>
-                </span>
-              </template>
-
-              <template v-else-if="statusOf(boss) === 'respawn_window'">
-                <span class="meta-item respawn-window">
-                  Убит: {{ formatTime(lastKill(boss.id).killed_at) }}
-                </span>
-                <span class="meta-item respawn-window">
-                  Окно: {{ fmtHours(RESPAWN_WINDOW[boss.tier]?.randomMax ?? 4) }}
-                  <span class="dim">(осталось {{ fmtMs(randomLeft(boss)) }})</span>
-                </span>
-              </template>
-
-              <template v-else-if="statusOf(boss) === 'estimate_min'">
-                <span class="meta-item estimate-min">
-                  По мин.: {{ formatTime(lastKill(boss.id).killed_at) }}
-                </span>
-                <span class="meta-item estimate-min">
-                  Респавн: {{ fmtHours((RESPAWN_WINDOW[boss.tier]?.fixed ?? 10) + getEstimateMinExtraHours(boss.tier)) }}
-                  <span class="dim">(осталось {{ fmtMs(fixedLeft(boss)) }})</span>
-                </span>
-              </template>
-
-              <span v-else class="meta-item alive">
-                Реснулся: {{ formatTime(lastKill(boss.id).respawn_at) }}
+      <table class="boss-table">
+        <thead>
+          <tr>
+            <th class="th-name">Имя</th>
+            <th class="th-level">Ур.</th>
+            <th class="th-status">Время</th>
+            <th class="th-killedby">Кем убит</th>
+            <th class="th-eta">ETA</th>
+            <th class="th-follow">Отслеживать</th>
+            <th class="th-watchers">Кто смотрит</th>
+            <th class="th-actions">Действия</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr
+            v-for="boss in testBosses"
+            :key="boss.id"
+            class="boss-row"
+            :class="`status-${statusOf(boss)}`"
+          >
+            <td class="td-name"><span class="name">{{ boss.name }}</span></td>
+            <td class="td-level"><span class="lvl">{{ boss.level }}</span></td>
+            <td class="td-status">
+              <div v-if="lastKill(boss.id)" class="meta">
+                <template v-if="statusOf(boss) === 'respawning'">
+                  <span class="meta-item respawn">Убит: {{ formatTime(lastKill(boss.id).killed_at) }}</span>
+                </template>
+                <template v-else-if="statusOf(boss) === 'respawn_window'">
+                  <span class="meta-item respawn-window">Убит: {{ formatTime(lastKill(boss.id).killed_at) }}</span>
+                </template>
+                <template v-else-if="statusOf(boss) === 'estimate_min'">
+                  <span class="meta-item estimate-min">По мин.: {{ formatTime(lastKill(boss.id).killed_at) }}</span>
+                </template>
+                <span v-else class="meta-item alive">Реснулся: {{ formatTime(lastKill(boss.id).respawn_at) }}</span>
+              </div>
+            </td>
+            <td class="td-killedby">
+              <span v-if="lastKill(boss.id) && lastKill(boss.id).killed_by_username" class="killer-name">
+                {{ lastKill(boss.id).killed_by_username }}
               </span>
-            </div>
-          </div>
-
-          <div v-if="!manualEdit || manualEdit.bossId !== boss.id" class="actions" @click.stop>
-            <div v-if="monitorsFor(boss.id).length" class="monitors-wrapper">
-              <span class="monitors-icon">👁</span>
-              <span class="monitors-list">{{ monitorsFor(boss.id).map(m => m.username).join(', ') }}</span>
-            </div>
-            <button
-              class="kill-btn"
-              @click="addKill(boss, false)"
-              :disabled="loadingId === boss.id || statusOf(boss) === 'respawning'"
-            >
-              {{ loadingId === boss.id ? '…' : 'Убил' }}
-            </button>
-            <button
-              class="kill-btn min-btn"
-              @click="addKill(boss, true)"
-              :disabled="loadingId === boss.id || statusOf(boss) === 'respawning' || statusOf(boss) === 'estimate_min'"
-            >
-              По мин.
-            </button>
-            <button class="kill-btn ghost-btn" @click="openManual(boss)" :disabled="loadingId === boss.id" title="Ввести время">
-              ⏱
-            </button>
-            <button
-              v-if="lastKill(boss.id)"
-              class="kill-btn clear-btn"
-              @click="clearKill(boss)"
-              :disabled="loadingId === boss.id"
-              title="Очистить"
-            >
-              ✕
-            </button>
-          </div>
-        </div>
-      </div>
+              <span v-else class="no-killer">—</span>
+            </td>
+            <td class="td-eta">
+              <template v-if="statusOf(boss) === 'respawning'"><span class="dim">{{ fmtMs(fixedLeft(boss)) }}</span></template>
+              <template v-else-if="statusOf(boss) === 'respawn_window'"><span class="dim">{{ fmtMs(randomLeft(boss)) }}</span></template>
+              <template v-else-if="statusOf(boss) === 'estimate_min'"><span class="dim">{{ fmtMs(fixedLeft(boss)) }}</span></template>
+              <template v-else>—</template>
+            </td>
+            <td class="td-follow">
+              <button
+                v-if="statusOf(boss) !== 'respawning'"
+                class="follow-btn"
+                :class="{ following: isMonitoring(boss.id) }"
+                @click.stop="toggleMonitor(boss)"
+              >
+                {{ isMonitoring(boss.id) ? '✓' : '+' }}
+              </button>
+            </td>
+            <td class="td-watchers">
+              <div v-if="monitorsFor(boss.id).length" class="watchers-list">
+                <span v-for="m in monitorsFor(boss.id)" :key="m.user_id" class="watcher-item">
+                  <span class="watcher-name">{{ m.username }}</span>
+                  <button
+                    class="watcher-remove"
+                    @click.stop="removeMonitor(boss.id, m.user_id)"
+                    title="Убрать наблюдателя"
+                  >✕</button>
+                </span>
+              </div>
+              <span v-else class="no-watchers">—</span>
+            </td>
+            <td class="td-actions">
+              <div class="actions-wrapper">
+                <div v-if="!manualEdit || manualEdit.bossId !== boss.id" class="actions" @click.stop>
+                  <button class="kill-btn kill-main" @click="addKill(boss, false)" :disabled="loadingId === boss.id || statusOf(boss) === 'respawning'">{{ loadingId === boss.id ? '…' : 'Убил' }}</button>
+                  <button class="kill-btn kill-min" @click="addKill(boss, true)" :disabled="loadingId === boss.id || statusOf(boss) === 'respawning' || statusOf(boss) === 'estimate_min'">
+                    <span class="btn-icon-min">⏱️</span>
+                    <span>min</span>
+                  </button>
+                  <button class="kill-btn ghost-btn" @click="openManual(boss)" :disabled="loadingId === boss.id" title="Ввести время">⏱</button>
+                  <button v-if="lastKill(boss.id)" class="kill-btn clear-btn" @click="clearKill(boss)" :disabled="loadingId === boss.id" title="Очистить">✕</button>
+                </div>
+                <div v-else class="manual-form" @click.stop>
+                  <input type="datetime-local" v-model="manualEdit.value" class="manual-input" />
+                  <button class="kill-btn" @click.stop="saveManual" :disabled="loadingId === boss.id">Сохранить</button>
+                  <button class="btn-ghost small" @click.stop="cancelManual">Отмена</button>
+                </div>
+              </div>
+            </td>
+          </tr>
+        </tbody>
+      </table>
     </section>
   </div>
 </template>
 
 <style scoped>
-/* ====== Базовые стили (светлая тема) ====== */
 .tracker {
   width: 100%;
   padding: 1.25rem 1.5rem;
@@ -252,445 +238,226 @@ const {
   box-sizing: border-box;
   transition: background 0.3s, color 0.3s;
 }
-
 .topbar {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 1.25rem;
+  margin-bottom: 1rem;
   padding: 0.6rem 0.9rem;
   background: #ffffff;
   border: 1px solid #cbd0d9;
   border-radius: 10px;
   box-shadow: 0 1px 3px rgba(0,0,0,0.04);
-  transition: background 0.3s, border-color 0.3s;
 }
 .nick { font-size: 0.85rem; color: #4a5058; }
-
-.topbar-center {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-}
-
+.topbar-center { display: flex; align-items: center; gap: 0.5rem; }
 .theme-toggle-container {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  cursor: pointer;
-  user-select: none;
+  display: flex; align-items: center; gap: 0.5rem; cursor: pointer; user-select: none;
 }
-
-.theme-icon {
-  font-size: 1.1rem;
-  line-height: 1;
-  opacity: 0.6;
-  transition: opacity 0.2s;
-}
-.theme-icon.moon { opacity: 0.6; }
-.theme-icon.sun { opacity: 0.6; }
-
+.theme-icon { font-size: 1.1rem; line-height: 1; opacity: 0.6; transition: opacity 0.2s; }
 .dark-theme .theme-icon.moon { opacity: 1; }
 .dark-theme .theme-icon.sun { opacity: 0.4; }
-
 .toggle-slider {
-  width: 36px;
-  height: 18px;
-  background: #d0d0d0;
-  border-radius: 18px;
-  position: relative;
-  transition: background 0.3s;
+  width: 36px; height: 18px; background: #d0d0d0; border-radius: 18px; position: relative; transition: background 0.3s;
 }
-
-.toggle-slider.active {
-  background: #555;
-}
-
+.toggle-slider.active { background: #555; }
 .toggle-knob {
-  width: 14px;
-  height: 14px;
-  background: white;
-  border-radius: 50%;
-  position: absolute;
-  top: 2px;
-  left: 2px;
-  transition: left 0.3s, background 0.3s;
-  box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+  width: 14px; height: 14px; background: white; border-radius: 50%; position: absolute; top: 2px; left: 2px;
+  transition: left 0.3s, background 0.3s; box-shadow: 0 1px 3px rgba(0,0,0,0.2);
 }
-
-.toggle-knob.active {
-  left: 20px;
-  background: #f0c674;
-}
-
+.toggle-knob.active { left: 20px; background: #f0c674; }
 .btn-ghost {
-  background: #ffffff;
-  border: 1px solid #cbd0d9;
-  color: #1e2024;
-  padding: 0.35rem 0.8rem;
-  border-radius: 6px;
-  font-size: 0.8rem;
-  cursor: pointer;
-  transition: background 0.15s, border-color 0.15s;
+  background: #ffffff; border: 1px solid #cbd0d9; color: #1e2024; padding: 0.35rem 0.8rem;
+  border-radius: 6px; font-size: 0.8rem; cursor: pointer; transition: background 0.15s, border-color 0.15s;
 }
 .btn-ghost:hover { background: #eef1f5; border-color: #5b8def; }
 .btn-ghost.small { padding: 0.25rem 0.5rem; font-size: 0.75rem; }
 
-.categories {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 1.25rem;
-  align-items: start;
+.boss-table {
+  width: 100%; border-collapse: collapse; background: #ffffff; border-radius: 12px; overflow: hidden;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.04); margin-bottom: 1.25rem;
 }
-@media (max-width: 1300px) { .categories { grid-template-columns: 1fr; } }
-
-.category {
-  background: #ffffff;
-  border: 1px solid #cbd0d9;
-  border-radius: 12px;
-  padding: 0.9rem;
-  box-shadow: 0 1px 4px rgba(0,0,0,0.04);
-  transition: background 0.3s, border-color 0.3s;
+.boss-table thead { background: #f0f2f5; }
+.boss-table th {
+  text-align: left; padding: 0.5rem 0.6rem; font-size: 0.72rem; font-weight: 600; color: #5a6068;
+  border-bottom: 1px solid #cbd0d9;
 }
+.th-name { width: 16%; }
+.th-level { width: 5%; }
+.th-status { width: 15%; }
+.th-killedby { width: 12%; }
+.th-eta { width: 10%; }
+.th-follow { width: 8%; text-align: center; }
+.th-watchers { width: 12%; }
+.th-actions { width: 22%; }
 
-.col-title {
-  margin: 0 0 0.75rem;
-  font-size: 0.95rem;
-  font-weight: 600;
-  letter-spacing: 0.02em;
-  display: flex;
-  justify-content: space-between;
-  align-items: baseline;
-  color: #16181c;
-}
-.counter { font-size: 0.75rem; color: #6b7280; font-weight: 400; }
+.boss-row { cursor: default; transition: background 0.12s; border-bottom: 1px solid #e2e4e8; }
+.boss-row:hover { background: #f5f6f8; }
+.boss-row.status-respawning     { background: #ffe6e6; }
+.boss-row.status-respawn_window { background: #ffe4c4; }
+.boss-row.status-estimate_min   { background: #fff2b0; }
+.boss-row.status-alive          { background: #daf0e0; }
+.boss-row td { padding: 0.4rem 0.6rem; vertical-align: middle; }
 
-.cards-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 0.5rem;
-}
-@media (max-width: 720px) { .cards-grid { grid-template-columns: 1fr; } }
-
-.card {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  padding: 0.5rem 0.6rem;
-  border: 2px solid;
-  border-radius: 8px;
-  min-width: 0;
-  cursor: pointer;
-  transition: transform 0.12s, box-shadow 0.15s;
-  background: #ffffff;
-}
-.card:hover { transform: translateY(-1px); box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08); }
-.card.is-monitored {
-  outline: 2px solid #3a7bd5;
-  outline-offset: 1px;
-}
-
-.card.status-respawning     { background: #ffe6e6; border-color: #d96c6c; }
-.card.status-respawn_window { background: #ffe4c4; border-color: #d98c40; }
-.card.status-estimate_min   { background: #fff2b0; border-color: #d4b820; }
-.card.status-alive          { background: #daf0e0; border-color: #68b88a; }
-
-.dot { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; border: 1px solid rgba(0,0,0,0.08); }
-.dot-respawning     { background: #d93030; }
-.dot-respawn_window { background: #d98020; }
-.dot-estimate_min   { background: #c4a000; }
-.dot-alive          { background: #28a05a; }
-
-.card-main { flex: 1; min-width: 0; }
-
-.name-row { display: flex; align-items: baseline; gap: 0.35rem; min-width: 0; flex-wrap: wrap; }
-.name {
-  font-weight: 600;
-  font-size: 0.85rem;
-  word-break: break-word;
-  color: #1e2024;
-}
-.lvl { font-size: 0.7rem; color: #6b7280; flex-shrink: 0; }
-
-.monitors-wrapper {
-  font-size: 0.75rem;
-  color: #3a6edb;
-  font-weight: 600;
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  background: rgba(58, 110, 219, 0.12);
-  padding: 2px 8px 2px 6px;
-  border-radius: 12px;
-  cursor: default;
-  transition: background 0.15s;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  max-width: 200px;
-  flex-shrink: 0;
-}
-.monitors-wrapper:hover {
-  background: rgba(58, 110, 219, 0.2);
-}
-
-.monitors-icon {
-  font-size: 1rem;
-  line-height: 1;
-  flex-shrink: 0;
-}
-
-.monitors-list {
-  font-size: 0.8rem;
-  color: #2b5ed9;
-  font-weight: 600;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.meta {
-  margin-top: 2px;
-  font-size: 0.72rem;
-  line-height: 1.3;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.5rem;
-}
-.meta-item { color: #4a5058; white-space: nowrap; }
+.td-name .name { font-weight: 600; font-size: 0.85rem; color: #1e2024; }
+.td-level .lvl { font-size: 0.78rem; font-weight: 600; color: #374151; }
+.td-status .meta { display: flex; flex-wrap: wrap; gap: 0.3rem; font-size: 0.72rem; }
+.meta-item { white-space: nowrap; }
 .meta-item.respawn { color: #b03030; font-weight: 600; }
 .meta-item.respawn-window { color: #a05c00; font-weight: 600; }
 .meta-item.estimate-min { color: #8a7a00; font-weight: 600; }
 .meta-item.alive { color: #1a7a3a; font-weight: 600; }
-.dim { color: #8a9099; }
+.td-killedby { font-size: 0.75rem; }
+.killer-name { color: #3a6edb; font-weight: 600; }
+.no-killer { color: #8a9099; }
+.td-eta { font-size: 0.82rem; font-weight: 700; color: #1e2024; }
+.dim { font-size: 0.82rem; font-weight: 700; color: #374151; }
 
-.manual-form {
-  display: flex;
-  gap: 0.3rem;
+/* Колонка "Кто смотрит" с крестиками */
+.td-watchers { font-size: 0.7rem; }
+.watchers-list { display: flex; flex-wrap: wrap; gap: 0.3rem; }
+.watcher-item {
+  display: inline-flex;
   align-items: center;
-  margin-top: 4px;
-  flex-wrap: wrap;
+  gap: 0.1rem;
 }
-.manual-input {
-  padding: 0.25rem 0.4rem;
-  border: 1px solid #c4c9d2;
-  border-radius: 6px;
-  font-size: 0.72rem;
-  background: #fff;
-  color: #1e2024;
-}
-
-.actions {
-  display: flex;
-  gap: 0.3rem;
-  flex-shrink: 0;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-  align-items: center;
-}
-
-.kill-btn {
+.watcher-name { color: #3a6edb; font-weight: 600; }
+.watcher-remove {
+  background: none;
   border: none;
-  padding: 0.35rem 0.6rem;
-  border-radius: 6px;
-  font-size: 0.75rem;
-  font-weight: 600;
+  color: #8a9099;
   cursor: pointer;
-  transition: background 0.12s, transform 0.06s, box-shadow 0.12s;
-  box-shadow: 0 1px 3px rgba(0,0,0,0.15);
+  font-size: 0.6rem;
+  padding: 0;
+  line-height: 1;
+  opacity: 0;
+  transition: opacity 0.15s, color 0.15s;
 }
-
-.kill-btn:hover:not(:disabled) {
-  transform: translateY(-1px);
-  box-shadow: 0 2px 6px rgba(0,0,0,0.2);
+.watcher-item:hover .watcher-remove {
+  opacity: 1;
 }
-
-.kill-btn:active:not(:disabled) {
-  transform: translateY(0);
-  box-shadow: 0 1px 2px rgba(0,0,0,0.15);
-}
-
-.kill-btn:disabled {
-  opacity: 0.5;
-  cursor: default;
-  box-shadow: none;
-}
-
-.kill-btn:not(.min-btn):not(.ghost-btn):not(.clear-btn) {
-  background: #2a7de0;
-  color: #ffffff;
-}
-.kill-btn:not(.min-btn):not(.ghost-btn):not(.clear-btn):hover:not(:disabled) {
-  background: #1a6bc8;
-}
-
-.min-btn {
-  background: #d98c20;
-  color: #ffffff;
-}
-.min-btn:hover:not(:disabled) {
-  background: #c07c18;
-}
-.min-btn:disabled {
-  background: #c0a060;
-  color: #fff;
-  opacity: 0.6;
-}
-
-.ghost-btn {
-  background: #f0f2f5;
-  color: #1e2024;
-  border: 1px solid #cbd0d9;
-  box-shadow: none;
-}
-.ghost-btn:hover:not(:disabled) {
-  background: #e2e6ec;
-  border-color: #5b8def;
-}
-
-.clear-btn {
-  background: #e6d0d0;
+.watcher-remove:hover {
   color: #b03030;
-  border: 1px solid #c09292;
-  box-shadow: none;
 }
-.clear-btn:hover:not(:disabled) {
-  background: #dbb8b8;
+.no-watchers { color: #8a9099; }
+
+.td-follow { text-align: center; }
+.follow-btn {
+  width: 28px; height: 28px; border: 1px solid #3a7bd5; background: white; color: #3a7bd5;
+  border-radius: 50%; font-size: 1rem; font-weight: 700; cursor: pointer;
+  display: inline-flex; align-items: center; justify-content: center; transition: all 0.15s;
+}
+.follow-btn:hover { background: #3a7bd5; color: white; }
+.follow-btn.following { background: #3a7bd5; color: white; border-color: #3a7bd5; }
+.follow-btn.following:hover { background: #b03030; border-color: #b03030; }
+
+.actions-wrapper { display: flex; align-items: center; gap: 0.3rem; flex-wrap: wrap; }
+.actions { display: flex; gap: 0.75rem; flex-wrap: wrap; align-items: center; }
+.kill-btn {
+  border: none; cursor: pointer; transition: background 0.15s, transform 0.1s;
+  display: inline-flex; align-items: center; justify-content: center; gap: 0.3rem;
+  white-space: nowrap;
+}
+.kill-btn:hover:not(:disabled) { transform: translateY(-1px); }
+.kill-btn:active:not(:disabled) { transform: translateY(0); }
+.kill-btn:disabled { opacity: 0.5; cursor: default; }
+
+.kill-main {
+  background: #2563eb;
+  color: #ffffff;
+  padding: 0.45rem 1rem;
+  border-radius: 10px;
+  font-size: 0.82rem;
+  font-weight: 600;
+  box-shadow: 0 2px 6px rgba(37, 99, 235, 0.3);
+}
+.kill-main:hover:not(:disabled) { background: #1d4ed8; box-shadow: 0 3px 10px rgba(37, 99, 235, 0.4); }
+.kill-main:disabled { background: #7a8eb0; }
+
+.kill-min {
+  background: transparent;
+  color: #b45309;
+  border: 1.5px solid #b45309;
+  padding: 0.35rem 0.65rem;
+  border-radius: 20px;
+  font-size: 0.72rem;
+  font-weight: 600;
+}
+.kill-min:hover:not(:disabled) { background: #fef3c7; border-color: #d97706; color: #d97706; }
+.kill-min:disabled { border-color: #a08250; color: #a08250; opacity: 0.6; background: transparent; }
+.btn-icon-min { font-size: 0.8rem; line-height: 1; }
+
+.ghost-btn { background: #f0f2f5; color: #1e2024; border: 1px solid #cbd0d9; box-shadow: none; padding: 0.3rem 0.5rem; border-radius: 6px; font-size: 0.7rem; }
+.ghost-btn:hover:not(:disabled) { background: #e2e6ec; border-color: #5b8def; }
+.clear-btn { background: #e6d0d0; color: #b03030; border: 1px solid #c09292; box-shadow: none; padding: 0.3rem 0.5rem; border-radius: 6px; font-size: 0.7rem; }
+.clear-btn:hover:not(:disabled) { background: #dbb8b8; }
+
+.manual-form { display: flex; gap: 0.3rem; align-items: center; flex-wrap: wrap; }
+.manual-input { padding: 0.2rem 0.3rem; border: 1px solid #c4c9d2; border-radius: 6px; font-size: 0.7rem; background: #fff; color: #1e2024; }
+
+@media (max-width: 720px) {
+  .boss-table, .boss-table tbody, .boss-table tr, .boss-table td, .boss-table th { display: block; }
+  .boss-table thead { display: none; }
+  .boss-row { margin-bottom: 0.5rem; border-radius: 8px; padding: 0.4rem 0.5rem; }
+  .boss-row td { padding: 0.2rem 0.3rem; border: none; }
+  .td-status .meta { flex-direction: column; gap: 0.2rem; }
+  .td-actions .actions-wrapper { flex-wrap: wrap; }
 }
 
-@media (max-width: 400px) {
-  .card {
-    flex-direction: column;
-    align-items: stretch;
-    gap: 0.3rem;
-    padding: 0.5rem;
-  }
-  .name-row { flex-wrap: wrap; }
-  .name { font-size: 0.85rem; white-space: normal; overflow: visible; text-overflow: clip; }
-  .lvl { font-size: 0.75rem; }
-  .monitors-wrapper { max-width: 100%; justify-content: flex-start; }
-  .actions { justify-content: flex-start; margin-top: 0.2rem; }
-  .meta { flex-direction: column; gap: 0.2rem; }
-  .manual-form { flex-direction: column; align-items: stretch; }
-}
+/* ====== Тёмная тема ====== */
+.tracker.dark-theme { background: #141517; color: #d1d5db; }
+.tracker.dark-theme .topbar { background: #1f2126; border-color: #2f323a; }
+.tracker.dark-theme .nick { color: #9ca3af; }
+.tracker.dark-theme .btn-ghost { background: #1f2126; border-color: #374151; color: #d1d5db; }
+.tracker.dark-theme .btn-ghost:hover { background: #2a2d34; border-color: #5b8def; }
+.tracker.dark-theme .boss-table { background: #1f2126; box-shadow: 0 1px 4px rgba(0,0,0,0.5); }
+.tracker.dark-theme .boss-table thead { background: #181a1f; }
+.tracker.dark-theme .boss-table th { color: #9ca3af; border-bottom-color: #2f323a; }
+.tracker.dark-theme .boss-row { border-bottom-color: #2f323a; }
+.tracker.dark-theme .boss-row:hover { background: #2a2d34; }
+.tracker.dark-theme .boss-row.status-respawning { background: #3a1a1a; border-left: 3px solid #d93030; }
+.tracker.dark-theme .boss-row.status-respawn_window { background: #3a2a10; border-left: 3px solid #d98020; }
+.tracker.dark-theme .boss-row.status-estimate_min { background: #3a3410; border-left: 3px solid #c4a000; }
+.tracker.dark-theme .boss-row.status-alive { background: #1a2a1a; border-left: 3px solid #28a05a; }
+.tracker.dark-theme .td-name .name { color: #e5e7eb; }
+.tracker.dark-theme .td-level .lvl { color: #d1d5db; }
+.tracker.dark-theme .killer-name { color: #7aa3ff; }
+.tracker.dark-theme .no-killer { color: #6b7280; }
+.tracker.dark-theme .td-status .meta-item { color: #9ca3af; }
+.tracker.dark-theme .meta-item.respawn { color: #f87171; }
+.tracker.dark-theme .meta-item.respawn-window { color: #fb923c; }
+.tracker.dark-theme .meta-item.estimate-min { color: #eab308; }
+.tracker.dark-theme .meta-item.alive { color: #4ade80; }
+.tracker.dark-theme .td-eta { color: #e5e7eb; }
+.tracker.dark-theme .dim { color: #e5e7eb; }
+.tracker.dark-theme .kill-main { background: #2563eb; box-shadow: 0 2px 6px rgba(37, 99, 235, 0.5); }
+.tracker.dark-theme .kill-main:hover:not(:disabled) { background: #1d4ed8; }
+.tracker.dark-theme .kill-main:disabled { background: #3a4a6b; }
+.tracker.dark-theme .kill-min { color: #fbbf24; border-color: #fbbf24; }
+.tracker.dark-theme .kill-min:hover:not(:disabled) { background: #3a2a10; border-color: #f59e0b; color: #f59e0b; }
+.tracker.dark-theme .kill-min:disabled { border-color: #7a6630; color: #7a6630; }
+.tracker.dark-theme .ghost-btn { background: #2a2d34; border-color: #374151; color: #d1d5db; }
+.tracker.dark-theme .ghost-btn:hover { background: #374151; }
+.tracker.dark-theme .clear-btn { background: #3a1a1a; border-color: #5a2020; color: #f87171; }
+.tracker.dark-theme .clear-btn:hover { background: #4a2020; }
+.tracker.dark-theme .manual-input { background: #2a2d34; border-color: #374151; color: #d1d5db; }
+.tracker.dark-theme .test-section { background: #1f2126; }
+.tracker.dark-theme .test-title { color: #9ca3af; }
+.tracker.dark-theme .follow-btn { background: #2a2d34; border-color: #6a9eff; color: #6a9eff; }
+.tracker.dark-theme .follow-btn:hover { background: #6a9eff; color: #1f2126; }
+.tracker.dark-theme .follow-btn.following { background: #6a9eff; color: #1f2126; }
+.tracker.dark-theme .follow-btn.following:hover { background: #f87171; border-color: #f87171; color: white; }
+.tracker.dark-theme .watcher-name { color: #7aa3ff; }
+.tracker.dark-theme .no-watchers { color: #6b7280; }
+.tracker.dark-theme .watcher-remove { color: #6b7280; }
+.tracker.dark-theme .watcher-remove:hover { color: #f87171; }
 
-/* ====== Тёмная тема (переопределяем только фон страницы и колонок) ====== */
-.tracker.dark-theme {
-  background: #1a1c20;
-  color: #e0e0e0;
-}
-
-.tracker.dark-theme .topbar {
-  background: #2a2d34;
-  border-color: #3b3e47;
-  color: #d0d0d0;
-}
-.tracker.dark-theme .topbar .nick {
-  color: #b0b0b0;
-}
-.tracker.dark-theme .btn-ghost {
-  background: #2a2d34;
-  border-color: #4a4d55;
-  color: #d0d0d0;
-}
-.tracker.dark-theme .btn-ghost:hover {
-  background: #3b3e47;
-}
-
-.tracker.dark-theme .category {
-  background: #2a2d34;
-  border-color: #3b3e47;
-  box-shadow: 0 1px 4px rgba(0,0,0,0.3);
-}
-
-.tracker.dark-theme .col-title {
-  color: #d0d0d0;
-}
-.tracker.dark-theme .col-title .counter {
-  color: #8a9099;
-}
-
-/* Карточки не трогаем – оставляем их цвета как есть */
-.tracker.dark-theme .card {
-  background: #2a2d34; /* только для карточек без статуса? но они переопределены статусами, так что фон будет из классов */
-}
-
-.tracker.dark-theme .name {
-  color: #e0e0e0;
-}
-.tracker.dark-theme .lvl {
-  color: #8a9099;
-}
-
-.tracker.dark-theme .monitors-wrapper {
-  background: rgba(58, 110, 219, 0.2);
-  color: #6a9eff;
-}
-.tracker.dark-theme .monitors-list {
-  color: #6a9eff;
-}
-
-.tracker.dark-theme .meta .meta-item {
-  color: #b0b0b0;
-}
-.tracker.dark-theme .meta .dim {
-  color: #6b7280;
-}
-
-.tracker.dark-theme .kill-btn {
-  box-shadow: 0 1px 3px rgba(0,0,0,0.3);
-}
-.tracker.dark-theme .ghost-btn {
-  background: #3b3e47;
-  border-color: #4a4d55;
-  color: #d0d0d0;
-}
-.tracker.dark-theme .ghost-btn:hover {
-  background: #4a4d55;
-}
-.tracker.dark-theme .clear-btn {
-  background: #3b2a2a;
-  border-color: #5a4040;
-  color: #e08080;
-}
-.tracker.dark-theme .clear-btn:hover {
-  background: #4a3030;
-}
-
-.tracker.dark-theme .manual-input {
-  background: #3b3e47;
-  border-color: #4a4d55;
-  color: #e0e0e0;
-}
-
-/* Тестовая секция в тёмной теме */
-.tracker.dark-theme .test-section {
-  background: #2a2d34;
-}
-.tracker.dark-theme .test-title {
-  color: #8a9099;
-}
-
-/* Медиа-запрос для тёмной темы (опционально) */
-@media (max-width: 400px) {
-  .tracker.dark-theme .name {
-    color: #e0e0e0;
-  }
-}
-
-/* Тестовая секция (светлая) */
 .test-section {
-  margin-top: 2rem;
-  padding: 0.9rem;
-  background: #f4f5f7;
-  border-radius: 12px;
-  transition: background 0.3s;
+  margin-top: 2rem; padding: 0.9rem;
+  background: #f4f5f7; border-radius: 12px; transition: background 0.3s;
 }
 .test-title {
-  margin: 0 0 0.75rem;
-  font-size: 0.95rem;
-  font-weight: 600;
-  color: #6b7280;
-  font-style: italic;
+  margin: 0 0 0.75rem; font-size: 0.95rem; font-weight: 600;
+  color: #6b7280; font-style: italic;
 }
 </style>
