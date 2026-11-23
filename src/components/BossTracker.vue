@@ -4,12 +4,12 @@ import { useBossTracker } from '../composables/useBossTracker'
 const {
   user, username, isDark, toggleTheme,
   monitorsFor, isMonitoring, toggleMonitor, removeMonitor, lastKill, statusOf,
-  fixedLeft, randomLeft, fmtHours, fmtMs,
+  fixedLeft, fmtHours, fmtMs,
   testBosses, allBosses,
   loadingId, manualEdit,
   addKill, openManual, cancelManual, saveManual, clearKill,
   formatTime, signOut,
-  maxRespawnTime,  // <-- добавлено
+  maxRespawnTime,
 } = useBossTracker()
 </script>
 
@@ -65,7 +65,6 @@ const {
               <template v-else-if="statusOf(boss) === 'estimate_min'">
                 <span class="meta-item estimate-min">По мин.: {{ formatTime(lastKill(boss.id).killed_at) }}</span>
               </template>
-              <!-- Для alive показываем максимальное время респа -->
               <span v-else class="meta-item alive">Реснулся: {{ formatTime(maxRespawnTime(boss)) }}</span>
             </div>
           </td>
@@ -76,13 +75,7 @@ const {
             <span v-else class="no-killer">—</span>
           </td>
           <td class="td-eta">
-            <template v-if="statusOf(boss) === 'respawning'">
-              <span class="dim">{{ fmtMs(fixedLeft(boss)) }}</span>
-            </template>
-            <template v-else-if="statusOf(boss) === 'respawn_window'">
-              <span class="dim">{{ fmtMs(randomLeft(boss)) }}</span>
-            </template>
-            <template v-else-if="statusOf(boss) === 'estimate_min'">
+            <template v-if="statusOf(boss) === 'respawning' || statusOf(boss) === 'respawn_window' || statusOf(boss) === 'estimate_min'">
               <span class="dim">{{ fmtMs(fixedLeft(boss)) }}</span>
             </template>
             <template v-else>—</template>
@@ -116,7 +109,7 @@ const {
                 <button class="kill-btn kill-main" @click="addKill(boss, false)" :disabled="loadingId === boss.id || statusOf(boss) === 'respawning'">
                   {{ loadingId === boss.id ? '…' : 'Убил' }}
                 </button>
-                <button class="kill-btn kill-min" @click="addKill(boss, true)" :disabled="loadingId === boss.id || statusOf(boss) === 'respawning' || statusOf(boss) === 'estimate_min'">
+                <button class="kill-btn kill-min" @click="addKill(boss, true)" :disabled="loadingId === boss.id || statusOf(boss) === 'respawning'">
                   <span class="btn-icon-min">⏱️</span>
                   <span>min</span>
                 </button>
@@ -182,9 +175,9 @@ const {
               <span v-else class="no-killer">—</span>
             </td>
             <td class="td-eta">
-              <template v-if="statusOf(boss) === 'respawning'"><span class="dim">{{ fmtMs(fixedLeft(boss)) }}</span></template>
-              <template v-else-if="statusOf(boss) === 'respawn_window'"><span class="dim">{{ fmtMs(randomLeft(boss)) }}</span></template>
-              <template v-else-if="statusOf(boss) === 'estimate_min'"><span class="dim">{{ fmtMs(fixedLeft(boss)) }}</span></template>
+              <template v-if="statusOf(boss) === 'respawning' || statusOf(boss) === 'respawn_window' || statusOf(boss) === 'estimate_min'">
+                <span class="dim">{{ fmtMs(fixedLeft(boss)) }}</span>
+              </template>
               <template v-else>—</template>
             </td>
             <td class="td-follow">
@@ -214,7 +207,7 @@ const {
               <div class="actions-wrapper">
                 <div v-if="!manualEdit || manualEdit.bossId !== boss.id" class="actions" @click.stop>
                   <button class="kill-btn kill-main" @click="addKill(boss, false)" :disabled="loadingId === boss.id || statusOf(boss) === 'respawning'">{{ loadingId === boss.id ? '…' : 'Убил' }}</button>
-                  <button class="kill-btn kill-min" @click="addKill(boss, true)" :disabled="loadingId === boss.id || statusOf(boss) === 'respawning' || statusOf(boss) === 'estimate_min'">
+                  <button class="kill-btn kill-min" @click="addKill(boss, true)" :disabled="loadingId === boss.id || statusOf(boss) === 'respawning'">
                     <span class="btn-icon-min">⏱️</span>
                     <span>min</span>
                   </button>
@@ -234,6 +227,7 @@ const {
     </section>
   </div>
 </template>
+
 
 <style scoped>
 .tracker {

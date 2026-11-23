@@ -67,7 +67,6 @@ export function useBossTracker() {
     }
   }
 
-  /** Удалить наблюдателя по user_id */
   async function removeMonitor(bossId, userId) {
     if (!user.value) return
     await supabase
@@ -87,40 +86,36 @@ export function useBossTracker() {
 
     const killedAt = new Date(last.killed_at).getTime()
     const fixedEnd = killedAt + fixedRespawnMs(boss.tier)
-    const windowEnd = fixedEnd + (RESPAWN_WINDOW[boss.tier]?.randomMax ?? 4) * 3600 * 1000
+    let windowEnd
+    if (last.estimate_min) {
+      windowEnd = fixedEnd + getEstimateMinExtraHours(boss.tier) * 3600 * 1000
+    } else {
+      windowEnd = fixedEnd + (RESPAWN_WINDOW[boss.tier]?.randomMax ?? 4) * 3600 * 1000
+    }
 
     const nowMs = now.value
 
-    if (last.estimate_min) {
-      const minEnd = killedAt + fixedRespawnMs(boss.tier) + getEstimateMinExtraHours(boss.tier) * 3600 * 1000
-      if (nowMs < minEnd) return 'estimate_min'
-      return 'alive'
-    }
-
     if (nowMs < fixedEnd) return 'respawning'
-    if (nowMs < windowEnd) return 'respawn_window'
+    if (nowMs < windowEnd) return last.estimate_min ? 'estimate_min' : 'respawn_window'
     return 'alive'
   }
 
   function fixedLeft(boss) {
     const last = lastKill(boss.id)
     if (!last) return 0
-    let fixedEnd
-    if (last.estimate_min) {
-      fixedEnd = new Date(last.killed_at).getTime() + fixedRespawnMs(boss.tier) + getEstimateMinExtraHours(boss.tier) * 3600 * 1000
-    } else {
-      fixedEnd = new Date(last.killed_at).getTime() + fixedRespawnMs(boss.tier)
-    }
-    return Math.max(0, fixedEnd - now.value)
-  }
-
-  function randomLeft(boss) {
-    const last = lastKill(boss.id)
-    if (!last || last.estimate_min) return 0
     const killedAt = new Date(last.killed_at).getTime()
-    const fixedEnd = killedAt + fixedRespawnMs(boss.tier)
-    const windowEnd = fixedEnd + (RESPAWN_WINDOW[boss.tier]?.randomMax ?? 4) * 3600 * 1000
-    return Math.max(0, windowEnd - Math.max(now.value, fixedEnd))
+    let fixedEnd, windowEnd
+    if (last.estimate_min) {
+      fixedEnd = killedAt + fixedRespawnMs(boss.tier)
+      windowEnd = fixedEnd + getEstimateMinExtraHours(boss.tier) * 3600 * 1000
+    } else {
+      fixedEnd = killedAt + fixedRespawnMs(boss.tier)
+      windowEnd = fixedEnd + (RESPAWN_WINDOW[boss.tier]?.randomMax ?? 4) * 3600 * 1000
+    }
+    const nowMs = now.value
+    if (nowMs < fixedEnd) return fixedEnd - nowMs
+    if (nowMs < windowEnd) return windowEnd - nowMs
+    return 0
   }
 
   function fmtHours(hours) {
@@ -148,15 +143,12 @@ export function useBossTracker() {
     return '<1м'
   }
 
-  const STATUS_ORDER = { alive: 0, respawn_window: 1, respawning: 2, estimate_min: 3 }
+  const STATUS_ORDER = { alive: 0, estimate_min: 1, respawn_window: 2, respawning: 3 }
 
   function getSortMs(boss) {
     const status = statusOf(boss)
-    if (status === 'respawning' || status === 'estimate_min') {
+    if (status === 'respawning' || status === 'estimate_min' || status === 'respawn_window') {
       return fixedLeft(boss)
-    }
-    if (status === 'respawn_window') {
-      return randomLeft(boss)
     }
     return Infinity
   }
@@ -178,13 +170,17 @@ export function useBossTracker() {
   const testBosses = computed(() => sortBosses(BOSSES.filter(b => b.tier.startsWith('test_'))))
   const allBosses = computed(() => sortBosses([...lowBosses.value, ...highBosses.value]))
 
-  /** Максимальное время респавна (фикс + окно) */
   function maxRespawnTime(boss) {
     const last = lastKill(boss.id)
     if (!last) return null
     const killedAt = new Date(last.killed_at).getTime()
-    const maxWindowMs = (RESPAWN_WINDOW[boss.tier]?.randomMax ?? 4) * 3600000
-    return new Date(killedAt + fixedRespawnMs(boss.tier) + maxWindowMs)
+    let windowEnd
+    if (last.estimate_min) {
+      windowEnd = killedAt + fixedRespawnMs(boss.tier) + getEstimateMinExtraHours(boss.tier) * 3600 * 1000
+    } else {
+      windowEnd = killedAt + fixedRespawnMs(boss.tier) + (RESPAWN_WINDOW[boss.tier]?.randomMax ?? 4) * 3600 * 1000
+    }
+    return new Date(windowEnd)
   }
 
   async function addKill(boss, estimateMin = false) {
@@ -193,20 +189,14 @@ export function useBossTracker() {
       alert('Босс ещё не реснулся!')
       return
     }
-    if (estimateMin && statusOf(boss) === 'estimate_min') {
-      alert('Босс уже в режиме «По мин.»')
-      return
-    }
-
     if (estimateMin) {
-      if (!confirm(`Вы уверены, что хотите установить время по минутам для босса «${boss.name}»? Это действие перезапишет время убийства на минимальное.`)) {
+      if (!confirm(`Вы уверены, что хотите установить время по минутам для босса «${boss.name}»?`)) {
         return
       }
     }
-
     loadingId.value = boss.id
 
-    let killTime, respawnMs
+    let killTime
     if (estimateMin) {
       const last = lastKill(boss.id)
       if (last) {
@@ -215,21 +205,23 @@ export function useBossTracker() {
       } else {
         killTime = new Date().toISOString()
       }
-      respawnMs = fixedRespawnMs(boss.tier) + getEstimateMinExtraHours(boss.tier) * 3600 * 1000
     } else {
       killTime = new Date().toISOString()
-      respawnMs = rollRespawnMs(boss.tier)
     }
-    const respawnIso = new Date(new Date(killTime).getTime() + respawnMs).toISOString()
 
-    const { error } = await supabase.from('boss_kills').insert({
+    const insertData = {
       boss_name: boss.id,
       user_id: user.value.id,
       killed_at: killTime,
-      respawn_at: respawnIso,
       estimate_min: estimateMin,
       killed_by_username: username.value,
-    })
+    }
+    if (!estimateMin) {
+      const respawnMs = rollRespawnMs(boss.tier)
+      insertData.respawn_at = new Date(new Date(killTime).getTime() + respawnMs).toISOString()
+    }
+
+    const { error } = await supabase.from('boss_kills').insert(insertData)
     loadingId.value = null
     if (error) {
       alert(error.message)
@@ -326,10 +318,10 @@ export function useBossTracker() {
   return {
     kills, monitors, loadingId, user, username, now, manualEdit, isDark,
     toggleTheme, lastKill, statusOf, monitorsFor, isMonitoring,
-    toggleMonitor, removeMonitor, fixedLeft, randomLeft, fmtHours, fmtMs,
+    toggleMonitor, removeMonitor, fixedLeft, fmtHours, fmtMs,
     lowBosses, highBosses, testBosses, allBosses,
     addKill, openManual, cancelManual, saveManual, clearKill,
     formatTime, signOut,
-    maxRespawnTime,  // <-- добавлено
+    maxRespawnTime,
   }
 }
