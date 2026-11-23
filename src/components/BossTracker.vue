@@ -48,7 +48,10 @@ const {
           class="boss-row"
           :class="`status-${statusOf(boss)}`"
         >
-          <td class="td-name"><span class="name">{{ boss.name }}</span></td>
+          <td class="td-name">
+            <span class="monitor-dot" :class="{ active: isMonitoring(boss.id) }"></span>
+            <span class="name">{{ boss.name }}</span>
+          </td>
           <td class="td-level"><span class="lvl">{{ boss.level }}</span></td>
           <td class="td-status">
             <div v-if="lastKill(boss.id)" class="meta">
@@ -151,7 +154,10 @@ const {
             class="boss-row"
             :class="`status-${statusOf(boss)}`"
           >
-            <td class="td-name"><span class="name">{{ boss.name }}</span></td>
+            <td class="td-name">
+              <span class="monitor-dot" :class="{ active: isMonitoring(boss.id) }"></span>
+              <span class="name">{{ boss.name }}</span>
+            </td>
             <td class="td-level"><span class="lvl">{{ boss.level }}</span></td>
             <td class="td-status">
               <div v-if="lastKill(boss.id)" class="meta">
@@ -299,6 +305,25 @@ const {
 .boss-row.status-alive          { background: #daf0e0; }
 .boss-row td { padding: 0.4rem 0.6rem; vertical-align: middle; }
 
+/* Имя с точкой */
+.td-name {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+.monitor-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: transparent;
+  flex-shrink: 0;
+  transition: background 0.2s;
+}
+.monitor-dot.active {
+  background: #3a7bd5;
+  box-shadow: 0 0 4px rgba(58, 123, 213, 0.5);
+}
+
 .td-name .name { font-weight: 600; font-size: 0.85rem; color: #1e2024; }
 .td-level .lvl { font-size: 0.78rem; font-weight: 600; color: #374151; }
 .td-status .meta { display: flex; flex-wrap: wrap; gap: 0.3rem; font-size: 0.72rem; }
@@ -312,8 +337,6 @@ const {
 .no-killer { color: #8a9099; }
 .td-eta { font-size: 0.82rem; font-weight: 700; color: #1e2024; }
 .dim { font-size: 0.82rem; font-weight: 700; color: #374151; }
-
-/* Колонка "Кто смотрит" с крестиками */
 .td-watchers { font-size: 0.7rem; }
 .watchers-list { display: flex; flex-wrap: wrap; gap: 0.3rem; }
 .watcher-item {
@@ -420,6 +443,7 @@ const {
 .tracker.dark-theme .boss-row.status-estimate_min { background: #3a3410; border-left: 3px solid #c4a000; }
 .tracker.dark-theme .boss-row.status-alive { background: #1a2a1a; border-left: 3px solid #28a05a; }
 .tracker.dark-theme .td-name .name { color: #e5e7eb; }
+.tracker.dark-theme .monitor-dot.active { background: #6a9eff; box-shadow: 0 0 4px rgba(106, 158, 255, 0.5); }
 .tracker.dark-theme .td-level .lvl { color: #d1d5db; }
 .tracker.dark-theme .killer-name { color: #7aa3ff; }
 .tracker.dark-theme .no-killer { color: #6b7280; }

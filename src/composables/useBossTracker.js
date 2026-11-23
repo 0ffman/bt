@@ -141,12 +141,16 @@ export function useBossTracker() {
   }
 
   function fmtMs(ms) {
-    if (ms <= 0) return '0с'
-    const h = Math.floor(ms / 3600000)
-    const m = Math.floor((ms % 3600000) / 60000)
-    const s = Math.floor((ms % 60000) / 1000)
-    return `${h}ч ${String(m).padStart(2, '0')}м ${String(s).padStart(2, '0')}с`
-  }
+  if (ms <= 0) return '0м'
+  const h = Math.floor(ms / 3600000)
+  const m = Math.floor((ms % 3600000) / 60000)
+  // Секунды больше не показываем
+  // const s = Math.floor((ms % 60000) / 1000)
+  if (h > 0 && m > 0) return `${h}ч ${m}м`
+  if (h > 0) return `${h}ч`
+  if (m > 0) return `${m}м`
+  return '<1м'
+}
 
   const STATUS_ORDER = { alive: 0, respawn_window: 1, respawning: 2, estimate_min: 3 }
 
