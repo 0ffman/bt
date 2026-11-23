@@ -57,10 +57,24 @@ const {
           <td class="td-status">
             <div v-if="lastKill(boss.id)" class="meta">
               <template v-if="statusOf(boss) === 'respawning'">
-                <span class="meta-item respawn">Убит: {{ formatTime(lastKill(boss.id).killed_at) }}</span>
+                <span class="meta-item respawn">
+                  <template v-if="lastKill(boss.id)?.estimate_min">
+                    Убит (min): {{ formatTime(lastKill(boss.id).killed_at) }}
+                  </template>
+                  <template v-else>
+                    Убит: {{ formatTime(lastKill(boss.id).killed_at) }}
+                  </template>
+                </span>
               </template>
               <template v-else-if="statusOf(boss) === 'respawn_window'">
-                <span class="meta-item respawn-window">Убит: {{ formatTime(lastKill(boss.id).killed_at) }}</span>
+                <span class="meta-item respawn-window">
+                  <template v-if="lastKill(boss.id)?.estimate_min">
+                    Убит (min): {{ formatTime(lastKill(boss.id).killed_at) }}
+                  </template>
+                  <template v-else>
+                    Убит: {{ formatTime(lastKill(boss.id).killed_at) }}
+                  </template>
+                </span>
               </template>
               <template v-else-if="statusOf(boss) === 'estimate_min'">
                 <span class="meta-item estimate-min">По мин.: {{ formatTime(lastKill(boss.id).killed_at) }}</span>
@@ -157,10 +171,24 @@ const {
             <td class="td-status">
               <div v-if="lastKill(boss.id)" class="meta">
                 <template v-if="statusOf(boss) === 'respawning'">
-                  <span class="meta-item respawn">Убит: {{ formatTime(lastKill(boss.id).killed_at) }}</span>
+                  <span class="meta-item respawn">
+                    <template v-if="lastKill(boss.id)?.estimate_min">
+                      Убит (min): {{ formatTime(lastKill(boss.id).killed_at) }}
+                    </template>
+                    <template v-else>
+                      Убит: {{ formatTime(lastKill(boss.id).killed_at) }}
+                    </template>
+                  </span>
                 </template>
                 <template v-else-if="statusOf(boss) === 'respawn_window'">
-                  <span class="meta-item respawn-window">Убит: {{ formatTime(lastKill(boss.id).killed_at) }}</span>
+                  <span class="meta-item respawn-window">
+                    <template v-if="lastKill(boss.id)?.estimate_min">
+                      Убит (min): {{ formatTime(lastKill(boss.id).killed_at) }}
+                    </template>
+                    <template v-else>
+                      Убит: {{ formatTime(lastKill(boss.id).killed_at) }}
+                    </template>
+                  </span>
                 </template>
                 <template v-else-if="statusOf(boss) === 'estimate_min'">
                   <span class="meta-item estimate-min">По мин.: {{ formatTime(lastKill(boss.id).killed_at) }}</span>
