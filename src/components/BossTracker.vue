@@ -9,6 +9,7 @@ const {
   loadingId, manualEdit,
   addKill, openManual, cancelManual, saveManual, clearKill,
   formatTime, signOut,
+  maxRespawnTime,  // <-- добавлено
 } = useBossTracker()
 </script>
 
@@ -64,7 +65,8 @@ const {
               <template v-else-if="statusOf(boss) === 'estimate_min'">
                 <span class="meta-item estimate-min">По мин.: {{ formatTime(lastKill(boss.id).killed_at) }}</span>
               </template>
-              <span v-else class="meta-item alive">Реснулся: {{ formatTime(lastKill(boss.id).respawn_at) }}</span>
+              <!-- Для alive показываем максимальное время респа -->
+              <span v-else class="meta-item alive">Реснулся: {{ formatTime(maxRespawnTime(boss)) }}</span>
             </div>
           </td>
           <td class="td-killedby">
@@ -170,7 +172,7 @@ const {
                 <template v-else-if="statusOf(boss) === 'estimate_min'">
                   <span class="meta-item estimate-min">По мин.: {{ formatTime(lastKill(boss.id).killed_at) }}</span>
                 </template>
-                <span v-else class="meta-item alive">Реснулся: {{ formatTime(lastKill(boss.id).respawn_at) }}</span>
+                <span v-else class="meta-item alive">Реснулся: {{ formatTime(maxRespawnTime(boss)) }}</span>
               </div>
             </td>
             <td class="td-killedby">
@@ -305,7 +307,6 @@ const {
 .boss-row.status-alive          { background: #daf0e0; }
 .boss-row td { padding: 0.4rem 0.6rem; vertical-align: middle; }
 
-/* Имя с точкой */
 .td-name {
   display: flex;
   align-items: center;
@@ -323,7 +324,6 @@ const {
   background: #3a7bd5;
   box-shadow: 0 0 4px rgba(58, 123, 213, 0.5);
 }
-
 .td-name .name { font-weight: 600; font-size: 0.85rem; color: #1e2024; }
 .td-level .lvl { font-size: 0.78rem; font-weight: 600; color: #374151; }
 .td-status .meta { display: flex; flex-wrap: wrap; gap: 0.3rem; font-size: 0.72rem; }
