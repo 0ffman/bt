@@ -96,7 +96,6 @@ const {
           </td>
           <td class="td-follow">
             <button
-              v-if="statusOf(boss) !== 'respawning'"
               class="follow-btn"
               :class="{ following: isMonitoring(boss.id) }"
               @click.stop="toggleMonitor(boss)"
@@ -210,7 +209,6 @@ const {
             </td>
             <td class="td-follow">
               <button
-                v-if="statusOf(boss) !== 'respawning'"
                 class="follow-btn"
                 :class="{ following: isMonitoring(boss.id) }"
                 @click.stop="toggleMonitor(boss)"
