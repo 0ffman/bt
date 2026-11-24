@@ -143,7 +143,7 @@ export function useBossTracker() {
     return '<1м'
   }
 
-  const STATUS_ORDER = { alive: 0, estimate_min: 1, respawn_window: 2, respawning: 3 }
+  const STATUS_ORDER = { alive: 0, estimate_min: 1, respawn_window: 1, respawning: 2 }
 
   function getSortMs(boss) {
     const status = statusOf(boss)
