@@ -51,7 +51,10 @@ const {
         >
           <td class="td-name">
             <span class="monitor-dot" :class="{ active: isMonitoring(boss.id) }"></span>
-            <span class="name">{{ boss.name }}</span>
+            <span class="name">
+              {{ boss.name }}
+              <span v-if="boss.hint" class="boss-hint"> ({{ boss.hint }})</span>
+            </span>
           </td>
           <td class="td-level"><span class="lvl">{{ boss.level }}</span></td>
           <td class="td-status">
@@ -164,7 +167,10 @@ const {
           >
             <td class="td-name">
               <span class="monitor-dot" :class="{ active: isMonitoring(boss.id) }"></span>
-              <span class="name">{{ boss.name }}</span>
+              <span class="name">
+                {{ boss.name }}
+                <span v-if="boss.hint" class="boss-hint"> ({{ boss.hint }})</span>
+              </span>
             </td>
             <td class="td-level"><span class="lvl">{{ boss.level }}</span></td>
             <td class="td-status">
@@ -503,5 +509,16 @@ const {
 .test-title {
   margin: 0 0 0.75rem; font-size: 0.95rem; font-weight: 600;
   color: #6b7280; font-style: italic;
+}
+
+.boss-hint {
+  font-size: 0.78rem;
+  font-weight: 500;
+  color: #374151;
+  white-space: nowrap;
+  margin-left: 0.1rem;
+}
+.tracker.dark-theme .boss-hint {
+  color: #e5e7eb;
 }
 </style>
